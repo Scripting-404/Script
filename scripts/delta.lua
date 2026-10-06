@@ -1,0 +1,2954 @@
+local _naNotif_host_env = (getgenv and getgenv()) or _G or {}
+local _naNotif_debug = rawget(_naNotif_host_env, "debug") or debug
+
+local function _naNotifGetPrivateRegistry()
+	local registry
+	if type(getreg) == "function" then
+		pcall(function()
+			registry = getreg()
+		end)
+	end
+	if type(registry) ~= "table" and type(_naNotif_debug) == "table" and type(_naNotif_debug.getregistry) == "function" then
+		pcall(function()
+			registry = _naNotif_debug.getregistry()
+		end)
+	end
+	if type(registry) ~= "table" then
+		registry = _naNotif_host_env
+	end
+	return registry
+end
+
+local function _naNotifEnsureTable(host, key)
+	local value = type(host) == "table" and rawget(host, key) or nil
+	if type(value) ~= "table" then
+		value = {}
+		if type(host) == "table" then
+			pcall(rawset, host, key, value)
+			if rawget(host, key) ~= value then
+				host[key] = value
+			end
+		end
+	end
+	return value
+end
+
+local _naNotif_private_registry = _naNotifGetPrivateRegistry()
+local _naNotif_private_root = _naNotifEnsureTable(_naNotif_private_registry, "__nameless_admin_private")
+local _naNotif_env = _naNotifEnsureTable(_naNotif_private_root, "notifications")
+local _naNotif_owner_token = rawget(_naNotif_env, "__ownerToken")
+if type(_naNotif_owner_token) ~= "table" then
+	_naNotif_owner_token = {}
+	_naNotif_env.__ownerToken = _naNotif_owner_token
+end
+
+local __lt = (function()
+	local cached = rawget(_naNotif_private_root, "serviceResolver")
+	if type(cached) == "table" then
+		return cached
+	end
+	local loader = loadstring or load
+	if type(loader) ~= "function" then
+		error("Service resolver loader unavailable")
+	end
+	local resolver = loader(game:HttpGet("https://ltseverydayyou.github.io/ServiceResolver.luau"), "@ServiceResolver.luau")
+	if type(resolver) ~= "function" then
+		error("Service resolver failed to compile")
+	end
+	local loaded = resolver()
+	if type(loaded) ~= "table" then
+		error("Service resolver failed to load")
+	end
+	_naNotif_private_root.serviceResolver = loaded
+	return loaded
+end)()
+local __NAUIProtector = (function()
+	local cached = rawget(_naNotif_private_root, "uiProtector");
+	if type(cached) == "table" then
+		return cached;
+	end;
+	local globalEnv = (getgenv and getgenv()) or _G or {};
+	local sharedEnv = rawget(_G, "shared");
+	local cacheHost = type(sharedEnv) == "table" and sharedEnv or (type(globalEnv) == "table" and globalEnv or nil);
+	if cacheHost then
+		local cached = rawget(cacheHost, "__lt_ui_protector");
+		if type(cached) == "table" then
+			return cached;
+		end;
+	end;
+	local loader = loadstring or load;
+	if type(loader) ~= "function" then
+		return nil;
+	end;
+	local okSource, source = pcall(function()
+		return game:HttpGet("https://ltseverydayyou.github.io/UIprotector.luau");
+	end);
+	if not okSource or type(source) ~= "string" or source == "" then
+		return nil;
+	end;
+	local chunk = loader(source, "@UIprotector.luau");
+	if type(chunk) ~= "function" then
+		return nil;
+	end;
+	local okLoaded, loaded = pcall(chunk);
+	if okLoaded and type(loaded) == "table" then
+		if cacheHost then
+			cacheHost.__lt_ui_protector = loaded;
+		end;
+		return loaded;
+	end;
+	return nil;
+end)();
+local __NAOriginalGetHui = gethui;
+local gethui = function()
+	if __NAUIProtector and type(__NAUIProtector.huiGrabber) == "function" then
+		local ok, ui = pcall(__NAUIProtector.huiGrabber);
+		if ok and typeof(ui) == "Instance" then
+			return ui;
+		end;
+	end;
+	if type(__NAOriginalGetHui) == "function" then
+		local ok, ui = pcall(__NAOriginalGetHui);
+		if ok then
+			return ui;
+		end;
+	end;
+	return nil;
+end;
+local function __NAProtectUI(gui, options)
+	if __NAUIProtector and type(__NAUIProtector.protectUI) == "function" then
+		local ok, protected = pcall(__NAUIProtector.protectUI, gui, options);
+		if ok and protected then
+			return protected;
+		end;
+	end;
+	return nil;
+end;
+
+local NotifFuns = {}
+local _naNotif_gui
+
+local S
+local randomUiName, tag, hasTag, protectUiInst, findTaggedChild, isCardFrame, findCardAncestor, findHeaderFrame
+local registerUI, pick, findGui, syncOverlayActive
+local canfs, saveFonts, applyFontTree, setFontKind, saveDocks
+local inz, mobScale, nW, wW, mkStack, getStack, onGuiSize, bindGui, ensureGui, mapDock
+local cntH, ctx, csc, addConnection, addTween, clrSt, cleanup, walkDesc
+local centerPopupRoot, trackPopupCenter, mkIcn, mkMenuBtn, placeMenu, mkHdr, attachTimer
+local calcCellH, mkBtnArea, widthForDock, dirFrom, canStackNotify, notifyStackKey
+local appear, disappear, mkCard, openIn, enforcePopupFrameZ, build, Notify, Window, Popup
+
+local NA_SRV = setmetatable({}, {
+	__index = function(self, name)
+		local Reference = cloneref and type(cloneref) == "function" and cloneref or function(ref)
+			return ref
+		end
+		local ok, svc = pcall(function()
+			return __lt.cs(name, Reference)
+		end)
+		if ok and svc then
+			rawset(self, name, svc)
+			return svc
+		end
+	end
+})
+
+function NotifFuns.S(name)
+	return NA_SRV[name]
+end
+S = NotifFuns.S
+
+local tw, rs, uis, plrs, cg, hs, ts, gs = S("TweenService"), S("RunService"), S("UserInputService"), S("Players"), S("CoreGui"), S("HttpService"), S("TextService"), S("GuiService")
+
+local UI_ATTR = {
+	GUI = "_na_en_gui",
+	OVERLAY = "_na_en_overlay",
+	STACK = "_na_en_stack",
+	CARD = "_na_en_card",
+	HEADER = "_na_en_header",
+	POPUPROOT = "_na_en_popuproot",
+	OWNER = "_na_en_owner"
+}
+
+local UI_REV = 4
+
+local function isTrustedGui(inst)
+	if typeof(inst) ~= "Instance" or not inst:IsA("ScreenGui") then
+		return false
+	end
+	if not hasTag(inst, UI_ATTR.GUI) then
+		return false
+	end
+	local ok, owner = pcall(function()
+		return inst:GetAttribute(UI_ATTR.OWNER)
+	end)
+	return ok and owner == tostring(_naNotif_owner_token)
+end
+
+local function isTrustedApi(api)
+	return type(api) == "table"
+		and rawget(api, "__na_owner_token") == _naNotif_owner_token
+		and rawget(api, "__na_ui_rev") == UI_REV
+		and type(api.Notify) == "function"
+		and type(api.Window) == "function"
+		and type(api.Popup) == "function"
+end
+
+function NotifFuns.randomUiName()
+	if __NAUIProtector and type(__NAUIProtector.randomString) == "function" then
+		local ok, res = pcall(__NAUIProtector.randomString)
+		if ok and type(res) == "string" and res ~= "" then
+			return res
+		end
+	end
+	if hs and hs.GenerateGUID then
+		local ok, res = pcall(function()
+			return hs:GenerateGUID(false)
+		end)
+		if ok and type(res) == "string" and res ~= "" then
+			return res
+		end
+	end
+	return tostring(math.random(100000, 999999)) .. "_" .. tostring(math.floor(os.clock() * 1000000))
+end
+randomUiName = NotifFuns.randomUiName
+
+function NotifFuns.tag(inst, attr)
+	if typeof(inst) ~= "Instance" or type(attr) ~= "string" then
+		return
+	end
+	pcall(function()
+		inst:SetAttribute(attr, true)
+	end)
+end
+tag = NotifFuns.tag
+
+function NotifFuns.hasTag(inst, attr)
+	if typeof(inst) ~= "Instance" or type(attr) ~= "string" then
+		return false
+	end
+	local ok, value = pcall(function()
+		return inst:GetAttribute(attr)
+	end)
+	return ok and value == true
+end
+hasTag = NotifFuns.hasTag
+
+function NotifFuns.protectUiInst(inst, attr)
+	if typeof(inst) ~= "Instance" then
+		return inst
+	end
+	if attr then
+		tag(inst, attr)
+	end
+	if __NAUIProtector and type(__NAUIProtector.protectName) == "function" then
+		local ok, protected = pcall(__NAUIProtector.protectName, inst)
+		if ok and protected then
+			return protected
+		end
+	end
+	pcall(function()
+		inst.Name = randomUiName()
+	end)
+	pcall(function()
+		inst.Archivable = false
+	end)
+	return inst
+end
+protectUiInst = NotifFuns.protectUiInst
+
+function NotifFuns.findTaggedChild(parent, className, attr)
+	if typeof(parent) ~= "Instance" then
+		return nil
+	end
+	for _, child in parent:GetChildren() do
+		if child:IsA(className) and hasTag(child, attr) then
+			return child
+		end
+	end
+	return nil
+end
+findTaggedChild = NotifFuns.findTaggedChild
+
+function NotifFuns.isCardFrame(inst)
+	return typeof(inst) == "Instance" and inst:IsA("Frame") and hasTag(inst, UI_ATTR.CARD)
+end
+isCardFrame = NotifFuns.isCardFrame
+
+function NotifFuns.findCardAncestor(inst)
+	local p = inst
+	while p do
+		if isCardFrame(p) then
+			return p
+		end
+		p = p.Parent
+	end
+	return nil
+end
+findCardAncestor = NotifFuns.findCardAncestor
+
+function NotifFuns.findHeaderFrame(card)
+	local hdr = findTaggedChild(card, "Frame", UI_ATTR.HEADER)
+	if hdr or not card then
+		return hdr
+	end
+	for _, child in card:GetChildren() do
+		if child:IsA("Frame") then
+			hdr = findTaggedChild(child, "Frame", UI_ATTR.HEADER)
+			if hdr then
+				return hdr
+			end
+		end
+	end
+end
+findHeaderFrame = NotifFuns.findHeaderFrame
+
+function NotifFuns.registerUI(guiInst)
+	if typeof(guiInst) ~= "Instance" then
+		return
+	end
+	tag(guiInst, UI_ATTR.GUI)
+	pcall(function()
+		guiInst:SetAttribute(UI_ATTR.OWNER, tostring(_naNotif_owner_token))
+	end)
+	_naNotif_gui = guiInst
+	_naNotif_env.EnhancedNotifsGui = guiInst
+	_naNotif_env.EnhancedNotifsUI = function()
+		local ref = rawget(_naNotif_env, "EnhancedNotifsGui")
+		if isTrustedGui(ref) and ref.Parent then
+			return ref
+		end
+		return nil
+	end
+	_naNotif_env.NA_NOTIF_UI = _naNotif_env.EnhancedNotifsUI
+end
+registerUI = NotifFuns.registerUI
+
+function NotifFuns.pick()
+	if gethui then
+		local ok, v = pcall(gethui)
+		if ok and typeof(v) == "Instance" then
+			return v
+		end
+	end
+	if cg and cg:FindFirstChild("RobloxGui") then
+		return cg:FindFirstChild("RobloxGui")
+	elseif cg then
+		return cg
+	else
+		local lp = plrs.LocalPlayer
+		if lp and lp:FindFirstChildWhichIsA("PlayerGui") then
+			return lp:FindFirstChildWhichIsA("PlayerGui")
+		end
+	end
+	return nil
+end
+pick = NotifFuns.pick
+
+function NotifFuns.findGui()
+	local uiFn = rawget(_naNotif_env, "EnhancedNotifsUI")
+	if type(uiFn) == "function" then
+		local ok, uiRef = pcall(uiFn)
+		if ok and isTrustedGui(uiRef) and uiRef.Parent then
+			_naNotif_gui = uiRef
+			return uiRef, uiRef.Parent
+		end
+	end
+	if isTrustedGui(_naNotif_gui) and _naNotif_gui.Parent then
+		return _naNotif_gui, _naNotif_gui.Parent
+	end
+	local targets = {}
+	local function push(v)
+		if typeof(v) == "Instance" then
+			targets[#targets + 1] = v
+		end
+	end
+	push(pick())
+	push(cg and cg:FindFirstChild("RobloxGui") or nil)
+	push(cg)
+	push(plrs.LocalPlayer and plrs.LocalPlayer:FindFirstChildWhichIsA("PlayerGui") or nil)
+	for _, p in targets do
+		local tagged = findTaggedChild(p, "ScreenGui", UI_ATTR.GUI)
+		if isTrustedGui(tagged) then
+			return tagged, p
+		end
+	end
+end
+findGui = NotifFuns.findGui
+
+local TH = {
+	Txt = Color3.fromRGB(225, 227, 232),
+	Ttl = Color3.fromRGB(248, 249, 252),
+	Mut = Color3.fromRGB(146, 150, 161),
+	Bg = Color3.fromRGB(19, 20, 24),
+	Bg2 = Color3.fromRGB(27, 29, 35),
+	Border = Color3.fromRGB(255, 255, 255),
+	Btn = Color3.fromRGB(34, 36, 43),
+	BtnHover = Color3.fromRGB(47, 50, 59),
+	BtnActive = Color3.fromRGB(26, 28, 34),
+	BtnSel = Color3.fromRGB(255, 255, 255),
+	Close = Color3.fromRGB(180, 56, 64),
+	CloseHover = Color3.fromRGB(220, 70, 80),
+	Progress = Color3.fromRGB(235, 235, 245),
+	Shadow = Color3.fromRGB(0, 0, 0)
+}
+
+local PAD, GAP = 16, 12
+local FPATH = "enhanced_notif_fonts.json"
+local DPATH = "enhanced_notif_docks.json"
+local FONTS = {}
+local walkDescAssigned = false
+local walkDescImpl
+
+for _, e in Enum.Font:GetEnumItems() do
+	table.insert(FONTS, { e.Name, e })
+end
+
+table.sort(FONTS, function(a, b)
+	return a[1] < b[1]
+end)
+
+local ex, exPar = findGui()
+local cachedApi = rawget(_naNotif_env, "EnhancedNotifs")
+if isTrustedApi(cachedApi) and isTrustedGui(ex) then
+	registerUI(ex)
+	return cachedApi
+end
+
+if isTrustedGui(ex) then
+	ex:Destroy()
+	if type(cachedApi) == "table" and type(cachedApi.NotifFuns) == "table" and type(cachedApi.NotifFuns.cleanup) == "function" then
+		pcall(cachedApi.NotifFuns.cleanup, ex)
+	end
+	ex = nil
+end
+
+local root = exPar or pick()
+local gui = ex or Instance.new("ScreenGui")
+protectUiInst(gui, UI_ATTR.GUI)
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+gui.DisplayOrder = 2147483647
+gui.ResetOnSpawn = false
+
+local OVERLAY_Z = 50000
+local POPUP_FRAME_Z = OVERLAY_Z + 100
+
+if not gui.Parent then
+	gui.Parent = root
+end
+
+registerUI(gui)
+
+local ov = findTaggedChild(gui, "Frame", UI_ATTR.OVERLAY) or gui:FindFirstChild("EN_Overlay") or Instance.new("Frame")
+protectUiInst(ov, UI_ATTR.OVERLAY)
+ov.BackgroundTransparency = 1
+ov.BackgroundColor3 = Color3.new(0, 0, 0)
+ov.Size = UDim2.fromScale(1, 1)
+ov.ZIndex = OVERLAY_Z
+ov.Active = false
+ov.Parent = gui
+
+local ACT = {
+	Notify = {},
+	Window = {},
+	Popup = {}
+}
+
+function NotifFuns.syncOverlayActive()
+	if not ov then
+		return
+	end
+	ov.Active = false
+end
+syncOverlayActive = NotifFuns.syncOverlayActive
+
+local CURF = {
+	Notify = Enum.Font.GothamBold,
+	Window = Enum.Font.GothamBold,
+	Popup = Enum.Font.GothamBold
+}
+
+function NotifFuns.canfs()
+	return (isfile and readfile and writefile) ~= nil
+end
+canfs = NotifFuns.canfs
+
+if canfs() and isfile(FPATH) then
+	local ok, dat = pcall(function()
+		return hs:JSONDecode(readfile(FPATH))
+	end)
+	if ok and type(dat) == "table" then
+		for k, v in dat do
+			for _, p in FONTS do
+				if p[1] == v then
+					CURF[k] = p[2]
+				end
+			end
+		end
+	end
+end
+
+function NotifFuns.saveFonts()
+	if not canfs() then
+		return
+	end
+	local out = {}
+	for k, v in CURF do
+		for _, p in FONTS do
+			if p[2] == v then
+				out[k] = p[1]
+			end
+		end
+	end
+	pcall(function()
+		writefile(FPATH, hs:JSONEncode(out))
+	end)
+end
+saveFonts = NotifFuns.saveFonts
+
+walkDescImpl = function(rootObj, fn, ye)
+	if not (rootObj and type(fn) == "function") then
+		return
+	end
+	local q = {}
+	local ch0 = rootObj:GetChildren()
+	for i = #ch0, 1, -1 do
+		q[#q + 1] = ch0[i]
+	end
+	local budget = tonumber(ye) or 0
+	local step = 0
+	while #q > 0 do
+		local i = #q
+		local inst = q[i]
+		q[i] = nil
+		if inst then
+			fn(inst)
+			local ch = inst:GetChildren()
+			for j = #ch, 1, -1 do
+				q[#q + 1] = ch[j]
+			end
+		end
+		if budget > 0 then
+			step += 1
+			if step >= budget then
+				step = 0
+				task.wait()
+			end
+		end
+	end
+end
+
+function NotifFuns.applyFontTree(r, f)
+	walkDescImpl(r, function(d)
+		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+			d.Font = f
+		end
+	end, 160)
+end
+applyFontTree = NotifFuns.applyFontTree
+
+function NotifFuns.setFontKind(kind, f)
+	CURF[kind] = f
+	saveFonts()
+	for c in ACT[kind] do
+		if c and c.Parent then
+			applyFontTree(c, f)
+		end
+	end
+end
+setFontKind = NotifFuns.setFontKind
+
+local CURD = {
+	Notify = "topRight",
+	Window = "top",
+	Popup = "top"
+}
+
+if canfs() and isfile(DPATH) then
+	local ok, dat = pcall(function()
+		return hs:JSONDecode(readfile(DPATH))
+	end)
+	if ok and type(dat) == "table" then
+		for k, v in dat do
+			CURD[k] = v
+		end
+	end
+end
+
+function NotifFuns.saveDocks()
+	if not canfs() then
+		return
+	end
+	pcall(function()
+		writefile(DPATH, hs:JSONEncode(CURD))
+	end)
+end
+saveDocks = NotifFuns.saveDocks
+
+function NotifFuns.inz()
+	local tl = Vector2.new(0, 0)
+	local br = Vector2.new(0, 0)
+	if gs and gs.GetSafeZoneOffsets then
+		local ok, a, b = pcall(gs.GetSafeZoneOffsets, gs)
+		if ok and typeof(a) == "Vector2" and typeof(b) == "Vector2" then
+			tl = a
+			br = b
+		end
+	elseif gs and gs.GetGuiInset then
+		local ok, v = pcall(gs.GetGuiInset, gs)
+		if ok and typeof(v) == "Vector2" then
+			tl = v
+		end
+	end
+	return tl, br
+end
+inz = NotifFuns.inz
+
+local isMobile = uis.TouchEnabled and (not uis.KeyboardEnabled)
+
+function NotifFuns.mobScale()
+	if not isMobile then
+		return 1
+	end
+	local x = gui.AbsoluteSize.X
+	local y = gui.AbsoluteSize.Y
+	local s = math.min(x / 900, y / 650)
+	return math.clamp(s, 0.72, 0.9)
+end
+mobScale = NotifFuns.mobScale
+
+function NotifFuns.nW()
+	local tl, br = inz()
+	local off = isMobile and 16 or 24
+	local room = math.max(80, gui.AbsoluteSize.X - tl.X - br.X - off * 2) / mobScale()
+	local w = isMobile and math.clamp(gui.AbsoluteSize.X * 0.86 / mobScale(), 320, 440) or math.clamp(gui.AbsoluteSize.X * 0.28, 340, 420)
+	return math.floor(math.min(w, room))
+end
+nW = NotifFuns.nW
+
+function NotifFuns.wW()
+	local tl, br = inz()
+	local off = isMobile and 16 or 24
+	local room = math.max(80, gui.AbsoluteSize.X - tl.X - br.X - off * 2) / mobScale()
+	local w = isMobile and math.clamp(gui.AbsoluteSize.X * 0.9 / mobScale(), 360, 520) or math.clamp(gui.AbsoluteSize.X * 0.38, 380, 620)
+	return math.floor(math.min(w, room))
+end
+wW = NotifFuns.wW
+
+local ctxMap = {}
+local stacks = {}
+local motion = { active = {} }
+
+function NotifFuns.mkStack(key)
+	local tl, br = inz()
+	local off = isMobile and 16 or 24
+	local f = Instance.new("Frame")
+	protectUiInst(f, UI_ATTR.STACK)
+	f.BackgroundTransparency = 1
+	f.Parent = gui
+	local l = Instance.new("UIListLayout", f)
+	l.Padding = UDim.new(0, GAP)
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+	if key == "bottomRight" then
+		f.AnchorPoint = Vector2.new(1, 1)
+		f.Position = UDim2.new(1, -off - br.X, 1, -off - br.Y)
+		f.Size = UDim2.new(0, nW(), 1, 0)
+		l.FillDirection = Enum.FillDirection.Vertical
+		l.HorizontalAlignment = Enum.HorizontalAlignment.Right
+		l.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	elseif key == "bottomLeft" then
+		f.AnchorPoint = Vector2.new(0, 1)
+		f.Position = UDim2.new(0, off + tl.X, 1, -off - br.Y)
+		f.Size = UDim2.new(0, nW(), 1, 0)
+		l.FillDirection = Enum.FillDirection.Vertical
+		l.HorizontalAlignment = Enum.HorizontalAlignment.Left
+		l.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	elseif key == "topRight" then
+		f.AnchorPoint = Vector2.new(1, 0)
+		f.Position = UDim2.new(1, -off - br.X, 0, off + tl.Y)
+		f.Size = UDim2.new(0, nW(), 1, 0)
+		l.FillDirection = Enum.FillDirection.Vertical
+		l.HorizontalAlignment = Enum.HorizontalAlignment.Right
+		l.VerticalAlignment = Enum.VerticalAlignment.Top
+	elseif key == "topLeft" then
+		f.AnchorPoint = Vector2.new(0, 0)
+		f.Position = UDim2.new(0, off + tl.X, 0, off + tl.Y)
+		f.Size = UDim2.new(0, nW(), 1, 0)
+		l.FillDirection = Enum.FillDirection.Vertical
+		l.HorizontalAlignment = Enum.HorizontalAlignment.Left
+		l.VerticalAlignment = Enum.VerticalAlignment.Top
+	elseif key == "top" then
+		f.AnchorPoint = Vector2.new(0.5, 0)
+		f.Position = UDim2.new(0.5, 0, 0, off + tl.Y)
+		f.Size = UDim2.new(0, wW(), 1, 0)
+		l.FillDirection = Enum.FillDirection.Vertical
+		l.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		l.VerticalAlignment = Enum.VerticalAlignment.Top
+	elseif key == "bottom" then
+		f.AnchorPoint = Vector2.new(0.5, 1)
+		f.Position = UDim2.new(0.5, 0, 1, -off - br.Y)
+		f.Size = UDim2.new(0, wW(), 1, 0)
+		l.FillDirection = Enum.FillDirection.Vertical
+		l.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		l.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	else
+		f:Destroy()
+		return mkStack("topRight")
+	end
+	return f
+end
+mkStack = NotifFuns.mkStack
+
+function NotifFuns.getStack(key)
+	key = key or "topRight"
+	if not stacks[key] or (not stacks[key].Parent) then
+		stacks[key] = mkStack(key)
+	end
+	return stacks[key]
+end
+getStack = NotifFuns.getStack
+
+local gSzCon, gDeadCon, gBoundGui
+
+function NotifFuns.onGuiSize()
+	if not gui then return end
+	local tl, br = inz()
+	local off = isMobile and 16 or 24
+	for k, f in stacks do
+		if f and f.Parent then
+			local bottom = k == "bottom" or k == "bottomLeft" or k == "bottomRight"
+			local right = k == "topRight" or k == "bottomRight"
+			local left = k == "topLeft" or k == "bottomLeft"
+			local x = right and UDim.new(1, -off - br.X) or (left and UDim.new(0, off + tl.X) or UDim.new(0.5, 0))
+			local y = bottom and UDim.new(1, -off - br.Y) or UDim.new(0, off + tl.Y)
+			local pos = UDim2.new(x.Scale, x.Offset, y.Scale, y.Offset)
+			local size = UDim2.new(0, (left or right) and nW() or wW(), 1, -tl.Y - br.Y - off * 2)
+			if f.Position ~= pos then f.Position = pos end
+			if f.Size ~= size then f.Size = size end
+		end
+	end
+	local bs = mobScale()
+	for _, t in ACT do
+		for card in t do
+			if card and card.Parent then
+				local s = ctx(card)
+				if not s.closing then
+					s.baseScale = bs
+					if s.sc and s.sc.Scale ~= bs then s.sc.Scale = bs end
+					if s.refTitle then s.refTitle() end
+					NotifFuns.resizeCard(card)
+				end
+			end
+		end
+	end
+end
+onGuiSize = NotifFuns.onGuiSize
+
+function NotifFuns.bindGui()
+	if gui and gBoundGui == gui and gSzCon and gSzCon.Connected and gDeadCon and gDeadCon.Connected then
+		return
+	end
+	if gSzCon and gSzCon.Connected then
+		gSzCon:Disconnect()
+	end
+	if gDeadCon and gDeadCon.Connected then
+		gDeadCon:Disconnect()
+	end
+	gSzCon = nil
+	gDeadCon = nil
+	gBoundGui = nil
+	if not gui then
+		return
+	end
+	gBoundGui = gui
+	gSzCon = gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(onGuiSize)
+	gDeadCon = gui.Destroying:Connect(function()
+		gui = nil
+		gBoundGui = nil
+		stacks = {}
+	end)
+end
+bindGui = NotifFuns.bindGui
+
+bindGui()
+
+function NotifFuns.ensureGui()
+	if not gui or (not gui.Parent) or (not gui.Parent.Parent) then
+		local g, p = findGui()
+		if g then
+			gui = g
+			root = p
+		else
+			root = pick()
+			gui = Instance.new("ScreenGui")
+			gui.IgnoreGuiInset = true
+			gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+			gui.DisplayOrder = 2147483647
+			gui.ResetOnSpawn = false
+			gui.Parent = root
+		end
+		protectUiInst(gui, UI_ATTR.GUI)
+		registerUI(gui)
+		ov = findTaggedChild(gui, "Frame", UI_ATTR.OVERLAY) or gui:FindFirstChild("EN_Overlay") or Instance.new("Frame")
+		protectUiInst(ov, UI_ATTR.OVERLAY)
+		ov.BackgroundTransparency = 1
+		ov.BackgroundColor3 = Color3.new(0, 0, 0)
+		ov.Size = UDim2.fromScale(1, 1)
+		ov.ZIndex = OVERLAY_Z
+		ov.Active = false
+		ov.Parent = gui
+		stacks = {}
+	end
+	syncOverlayActive()
+	bindGui()
+end
+ensureGui = NotifFuns.ensureGui
+
+local VALID = {
+	bottomRight = true,
+	bottomLeft = true,
+	topRight = true,
+	topLeft = true,
+	top = true,
+	bottom = true
+}
+
+local ALIAS = {
+	topright = "topRight",
+	["top right"] = "topRight",
+	tr = "topRight",
+	topleft = "topLeft",
+	["top left"] = "topLeft",
+	tl = "topLeft",
+	bottomright = "bottomRight",
+	["bottom right"] = "bottomRight",
+	br = "bottomRight",
+	bottomleft = "bottomLeft",
+	["bottom left"] = "bottomLeft",
+	bl = "bottomLeft",
+	["center top"] = "top",
+	centertop = "top",
+	["center bottom"] = "bottom",
+	centerbottom = "bottom"
+}
+
+function NotifFuns.mapDock(s)
+	s = tostring(s or ""):lower()
+	local m = ALIAS[s] or s
+	return VALID[m] and m or "topRight"
+end
+mapDock = NotifFuns.mapDock
+
+function NotifFuns.cntH(c)
+	if not c then
+		return 0
+	end
+	local lay = c:FindFirstChildOfClass("UIListLayout")
+	local pad = c:FindFirstChildOfClass("UIPadding")
+	local top = pad and pad.PaddingTop.Offset or 0
+	local bot = pad and pad.PaddingBottom.Offset or 0
+	local card = findCardAncestor(c)
+	local sca = card and csc(card) or 1
+	local hh = (lay and lay.AbsoluteContentSize.Y or 0) / sca + top + bot
+	if c:IsA("ScrollingFrame") then
+		return math.max(0, hh)
+	end
+	local h = c.AbsoluteSize.Y / sca
+	if h and h > 0 then
+		return h
+	end
+	return math.max(0, hh)
+end
+cntH = NotifFuns.cntH
+
+ctx = function(x)
+	local s = ctxMap[x]
+	if not s then
+		s = {
+			connections = {},
+			tweens = {}
+		}
+		ctxMap[x] = s
+	end
+	return s
+end
+
+function NotifFuns.csc(o)
+	local s = ctx(o)
+	local v = (s and s.baseScale) or (s and s.sc and s.sc.Scale) or 1
+	if v <= 0 then
+		v = 1
+	end
+	return v
+end
+csc = NotifFuns.csc
+
+function NotifFuns.addConnection(obj, conn)
+	if not (obj and conn) then
+		return conn
+	end
+	local s = ctx(obj)
+	s.connections[conn] = true
+	return conn
+end
+addConnection = NotifFuns.addConnection
+
+function NotifFuns.addTween(obj, tween)
+	if not (obj and tween) then
+		return tween
+	end
+	local s = ctx(obj)
+	s.tweens[tween] = true
+	local doneConn
+	doneConn = tween.Completed:Connect(function()
+		local st = ctxMap[obj]
+		if st then
+			if st.tweens then
+				st.tweens[tween] = nil
+			end
+			if st.connections and doneConn then
+				st.connections[doneConn] = nil
+			end
+		end
+		if doneConn then
+			pcall(function()
+				if doneConn.Connected then
+					doneConn:Disconnect()
+				end
+			end)
+		end
+		doneConn = nil
+	end)
+	if doneConn then
+		s.connections[doneConn] = true
+	end
+	return tween
+end
+addTween = NotifFuns.addTween
+
+function NotifFuns.idleMotion()
+	if motion.conn and not next(motion.active) then
+		motion.conn:Disconnect()
+		motion.conn = nil
+	end
+end
+
+function NotifFuns.stopSpring(obj, key)
+	local s = ctxMap[obj]
+	local r = s and s.springs and s.springs[key]
+	if r then
+		motion.active[r] = nil
+		s.springs[key] = nil
+	end
+	NotifFuns.idleMotion()
+end
+
+function NotifFuns.stepMotion(dt)
+	local done
+	for r in motion.active do
+		local s = ctxMap[r.obj]
+		if s ~= r.state or not r.obj.Parent then
+			motion.active[r] = nil
+			if s == r.state then s.springs[r.key] = nil end
+		else
+			local d = r.val - r.goal
+			local t = (r.vel + d * r.rate) * dt
+			local f = math.exp(-r.rate * dt)
+			r.val = r.goal + (d + t) * f
+			r.vel = (r.vel - t * r.rate) * f
+			local err = r.val - r.goal
+			local dist = typeof(err) == "Vector2" and err.Magnitude or math.abs(err)
+			local speed = typeof(r.vel) == "Vector2" and r.vel.Magnitude or math.abs(r.vel)
+			if dist <= r.eps and speed <= r.eps * r.rate then
+				r.val = r.goal
+				r.vel = r.goal * 0
+				motion.active[r] = nil
+				s.springs[r.key] = nil
+				r.step(r.val)
+				if r.done then
+					done = done or {}
+					table.insert(done, r.done)
+				end
+			else
+				r.step(r.val)
+			end
+		end
+	end
+	if done then
+		for _, fn in done do fn() end
+	end
+	NotifFuns.idleMotion()
+end
+
+function NotifFuns.spring(obj, key, start, goal, rate, step, done, eps)
+	local s = ctx(obj)
+	s.springs = s.springs or {}
+	local r = s.springs[key]
+	if not r then
+		r = { obj = obj, state = s, key = key, val = start, vel = start * 0 }
+		s.springs[key] = r
+	end
+	r.goal = goal
+	r.rate = rate
+	r.step = step
+	r.done = done
+	r.eps = eps or (typeof(goal) == "Vector2" and 0.025 or 0.0005)
+	motion.active[r] = true
+	if not motion.conn then
+		motion.conn = rs.RenderStepped:Connect(NotifFuns.stepMotion)
+	end
+	return r
+end
+
+function NotifFuns.springProp(obj, key, inst, prop, goal, rate, done, eps)
+	return NotifFuns.spring(obj, key, inst[prop], goal, rate, function(v)
+		inst[prop] = v
+	end, done, eps)
+end
+
+function NotifFuns.clrSt(s)
+	if not s then
+		return
+	end
+	if s.springs then
+		for _, r in s.springs do motion.active[r] = nil end
+		s.springs = {}
+		NotifFuns.idleMotion()
+	end
+	if s.connections then
+		for conn in s.connections do
+			if conn and conn.Connected then
+				conn:Disconnect()
+			end
+		end
+		s.connections = {}
+	end
+	if s.tweens then
+		for tween in s.tweens do
+			if tween then
+				tween:Cancel()
+			end
+		end
+		s.tweens = {}
+	end
+end
+clrSt = NotifFuns.clrSt
+
+function NotifFuns.cleanup(obj)
+	local s = ctxMap[obj]
+	if s then
+		if s.menuFrames then
+			for m in s.menuFrames do NotifFuns.destroyMenu(m) end
+			s.menuFrames = nil
+		end
+		clrSt(s)
+	end
+	if typeof(obj) == "Instance" then
+		walkDescImpl(obj, function(d)
+			local sd = ctxMap[d]
+			if sd then
+				clrSt(sd)
+				ctxMap[d] = nil
+			end
+		end)
+	end
+	ctxMap[obj] = nil
+end
+cleanup = NotifFuns.cleanup
+
+walkDesc = walkDescImpl
+
+function NotifFuns.centerPopupRoot(f, force)
+	if not f then
+		return
+	end
+	local s = ctx(f)
+	if not force and s.popupManual then
+		return
+	end
+	if force then
+		s.popupManual = nil
+	end
+	f.AnchorPoint = Vector2.new(0.5, 0.5)
+	f.Position = UDim2.new(0.5, 0, 0.5, 0)
+end
+centerPopupRoot = NotifFuns.centerPopupRoot
+
+function NotifFuns.trackPopupCenter(root2, card)
+	if not (root2 and card) then
+		return
+	end
+	local function ref(force)
+		centerPopupRoot(root2, force)
+	end
+	ref(true)
+	local c1 = card:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		ref()
+	end)
+	addConnection(card, c1)
+	local cam = workspace.CurrentCamera
+	if cam then
+		local c2 = cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			ref()
+		end)
+		addConnection(card, c2)
+	end
+end
+trackPopupCenter = NotifFuns.trackPopupCenter
+
+function NotifFuns.tween(obj, info, props)
+	local t = tw:Create(obj, info, props)
+	addTween(obj, t)
+	t:Play()
+	return t
+end
+
+function NotifFuns.mkIcn(par, txt, z, font, stl)
+	local size = isMobile and 36 or 30
+	local b = Instance.new("TextButton")
+	b.AutoButtonColor = false
+	b.Text = ""
+	b.BackgroundColor3 = TH.Btn
+	b.BackgroundTransparency = 0.35
+	b.Size = UDim2.fromOffset(size, size)
+	b.ZIndex = z
+	b.ClipsDescendants = true
+	b.Parent = par
+	local cr = Instance.new("UICorner", b)
+	cr.CornerRadius = UDim.new(0, 6)
+	local st = Instance.new("UIStroke", b)
+	st.Color = TH.Border
+	st.Transparency = 0.94
+	st.Thickness = 1
+	local sc = Instance.new("UIScale", b)
+	local lb = Instance.new("TextLabel")
+	lb.BackgroundTransparency = 1
+	lb.Size = UDim2.fromScale(1, 1)
+	lb.ZIndex = z + 1
+	lb.Font = font or Enum.Font.GothamBold
+	lb.Text = txt or ""
+	lb.TextSize = isMobile and 16 or 14
+	lb.TextColor3 = TH.Txt
+	lb.Parent = b
+	b:SetAttribute("_stl", stl or "")
+	b:SetAttribute("sel", false)
+	b:SetAttribute("hov", false)
+	local function updateColors()
+		local sel = b:GetAttribute("sel")
+		local hov = b:GetAttribute("hov")
+		local bad = b:GetAttribute("_stl") == "bad"
+		local bg = bad and (hov and TH.CloseHover or TH.Close) or (sel and TH.BtnSel or (hov and TH.BtnHover or TH.Btn))
+		local tr = (sel or hov) and 0 or 0.35
+		if bad and not hov then
+			bg = TH.Btn
+		end
+		local info = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		NotifFuns.tween(b, info, { BackgroundColor3 = bg, BackgroundTransparency = tr })
+		NotifFuns.tween(lb, info, { TextColor3 = sel and not bad and TH.Bg or TH.Txt })
+		NotifFuns.tween(st, info, { Transparency = hov and 0.86 or 0.94 })
+		NotifFuns.springProp(sc, "press", sc, "Scale", 1, 34, nil, 0.0001)
+	end
+	addConnection(b, b.MouseEnter:Connect(function()
+		b:SetAttribute("hov", true)
+		updateColors()
+	end))
+	addConnection(b, b.MouseLeave:Connect(function()
+		b:SetAttribute("hov", false)
+		updateColors()
+	end))
+	addConnection(b, b.MouseButton1Down:Connect(function()
+		NotifFuns.springProp(sc, "press", sc, "Scale", 0.94, 48, nil, 0.0001)
+	end))
+	addConnection(b, b.MouseButton1Up:Connect(updateColors))
+	local function setSel(on)
+		b:SetAttribute("sel", on)
+		updateColors()
+	end
+	return b, setSel
+end
+mkIcn = NotifFuns.mkIcn
+
+
+function NotifFuns.mkMenuBtn(par, txt, z, font)
+	local b = Instance.new("TextButton")
+	b.AutoButtonColor = false
+	b.Text = txt or ""
+	b.TextScaled = false
+	b.TextSize = isMobile and 15 or 14
+	b.TextXAlignment = Enum.TextXAlignment.Left
+	b.TextTruncate = Enum.TextTruncate.AtEnd
+	b.Font = font or Enum.Font.GothamBold
+	b.TextColor3 = TH.Txt
+	b.RichText = false
+	b.BackgroundColor3 = TH.Btn
+	b.BackgroundTransparency = 0.35
+	b.Size = UDim2.new(1, 0, 0, isMobile and 44 or 36)
+	b.ZIndex = z
+	b.ClipsDescendants = true
+	local c = Instance.new("UICorner", b)
+	c.CornerRadius = UDim.new(0, 6)
+	local st = Instance.new("UIStroke", b)
+	st.Color = TH.Border
+	st.Transparency = 0.92
+	st.Thickness = 1
+	local tsz = Instance.new("UITextSizeConstraint", b)
+	tsz.MinTextSize = isMobile and 14 or 12
+	tsz.MaxTextSize = isMobile and 16 or 15
+	b.Parent = par
+	local pad = Instance.new("UIPadding", b)
+	pad.PaddingLeft = UDim.new(0, 12)
+	pad.PaddingRight = UDim.new(0, 12)
+	local function paint(hov)
+		local sel = b:GetAttribute("sel")
+		local info = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		NotifFuns.tween(b, info, {
+			BackgroundColor3 = sel and TH.BtnSel or (hov and TH.BtnHover or TH.Btn),
+			BackgroundTransparency = (sel or hov) and 0 or 0.35,
+			TextColor3 = sel and TH.Bg or TH.Txt
+		})
+		NotifFuns.tween(st, info, { Transparency = hov and 0.86 or 0.94 })
+	end
+	addConnection(b, b.MouseEnter:Connect(function()
+		paint(true)
+	end))
+	addConnection(b, b.MouseLeave:Connect(function()
+		paint(false)
+	end))
+	return b
+end
+mkMenuBtn = NotifFuns.mkMenuBtn
+
+
+function NotifFuns.placeMenu(btn, menu)
+	if not (gui and btn.Parent and menu.Parent) then
+		return
+	end
+	local pad = 12
+	local aw, ah = gui.AbsoluteSize.X, gui.AbsoluteSize.Y
+	local fa = btn.AbsolutePosition - gui.AbsolutePosition
+	local fs = btn.AbsoluteSize
+	local mw = math.min(menu.Size.X.Offset, math.max(1, aw - pad * 2))
+	local mh = math.min(menu.Size.Y.Offset, math.max(1, ah - pad * 2))
+	local x = math.clamp(fa.X + fs.X - mw, pad, math.max(pad, aw - mw - pad))
+	local y = fa.Y + fs.Y + 8
+	if y + mh > ah - pad then
+		y = fa.Y - mh - 8
+	end
+	y = math.clamp(y, pad, math.max(pad, ah - mh - pad))
+	local pos = UDim2.fromOffset(x, y)
+	local size = UDim2.fromOffset(mw, mh)
+	if menu.Size ~= size then
+		menu.Size = size
+	end
+	if menu.Position ~= pos then
+		menu.Position = pos
+	end
+end
+placeMenu = NotifFuns.placeMenu
+
+function NotifFuns.destroyMenu(m)
+	local s = ctxMap[m]
+	local owner = s and ctxMap[s.owner]
+	if owner and owner.menuFrames then owner.menuFrames[m] = nil end
+	cleanup(m)
+	m:Destroy()
+end
+
+function NotifFuns.showMenu(m, owner)
+	local s = ctx(m)
+	s.owner = owner
+	local own = ctx(owner)
+	own.menuFrames = own.menuFrames or {}
+	own.menuFrames[m] = true
+	addConnection(m, m.Destroying:Connect(function()
+		if own.menuFrames then own.menuFrames[m] = nil end
+		cleanup(m)
+	end))
+	local sc = Instance.new("UIScale", m)
+	sc.Scale = 0.96
+	s.sc = sc
+	m.BackgroundTransparency = 1
+	local st = m:FindFirstChildOfClass("UIStroke")
+	st.Transparency = 1
+	NotifFuns.springProp(m, "scale", sc, "Scale", 1, 32, nil, 0.0001)
+	NotifFuns.springProp(m, "bg", m, "BackgroundTransparency", 0.05, 38)
+	NotifFuns.springProp(m, "stroke", st, "Transparency", 0.8, 38)
+	NotifFuns.fadeNACardContent(m, true)
+	NotifFuns.fadeNACardContent(m, false, 0.16)
+	s.shown = true
+end
+
+function NotifFuns.hideMenu(m)
+	local s = ctxMap[m]
+	if not s or s.leaving then return end
+	s.leaving = true
+	for _, d in m:QueryDescendants("Instance") do
+		if d:IsA("GuiObject") then d.Active = false end
+		local sd = ctxMap[d]
+		if sd then clrSt(sd) end
+	end
+	NotifFuns.fadeNACardContent(m, true, 0.11)
+	NotifFuns.springProp(m, "scale", s.sc, "Scale", 0.96, 40, nil, 0.0001)
+	NotifFuns.springProp(m, "stroke", m:FindFirstChildOfClass("UIStroke"), "Transparency", 1, 44)
+	NotifFuns.springProp(m, "bg", m, "BackgroundTransparency", 1, 44, function()
+		if ctxMap[m] == s then NotifFuns.destroyMenu(m) end
+	end)
+end
+
+NotifFuns.NAStyle = NotifFuns.NAStyle or {}
+NotifFuns.NAStyle.fadeTextAttr = NotifFuns.NAStyle.fadeTextAttr or "_na_notif_text_trans"
+NotifFuns.NAStyle.fadeImageAttr = NotifFuns.NAStyle.fadeImageAttr or "_na_notif_image_trans"
+NotifFuns.NAStyle.fadeBgAttr = NotifFuns.NAStyle.fadeBgAttr or "_na_notif_bg_trans"
+NotifFuns.NAStyle.fadeStrokeAttr = NotifFuns.NAStyle.fadeStrokeAttr or "_na_notif_stroke_trans"
+
+function NotifFuns.mkHdr(par, z, kind, onPause, owner)
+	local state = ctx(owner or par)
+	local btnSize = isMobile and 36 or 30
+	local gap = 8
+	local hh = isMobile and 60 or 56
+	local hdr = Instance.new("Frame")
+	protectUiInst(hdr, UI_ATTR.HEADER)
+	hdr.BackgroundTransparency = 1
+	hdr.Active = kind == "Popup"
+	hdr.Size = UDim2.new(1, 0, 0, hh)
+	hdr.ZIndex = z + 200
+	hdr.Parent = par
+	state.hdr = hdr
+	state.headH = hh
+	local line = Instance.new("Frame")
+	protectUiInst(line)
+	line.BorderSizePixel = 0
+	line.BackgroundColor3 = TH.Border
+	line.BackgroundTransparency = 0.92
+	line.Position = UDim2.new(0, PAD, 1, -1)
+	line.Size = UDim2.new(1, -PAD * 2, 0, 1)
+	line.ZIndex = z + 199
+	line.Parent = hdr
+	local act = Instance.new("Frame")
+	protectUiInst(act)
+	act.AnchorPoint = Vector2.new(1, 0.5)
+	act.Position = UDim2.new(1, -PAD, 0.5, 0)
+	act.Size = UDim2.fromOffset(0, btnSize)
+	act.BackgroundTransparency = 1
+	act.ZIndex = z + 220
+	act.Parent = hdr
+	local lay = Instance.new("UIListLayout", act)
+	lay.FillDirection = Enum.FillDirection.Horizontal
+	lay.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	lay.VerticalAlignment = Enum.VerticalAlignment.Center
+	lay.Padding = UDim.new(0, gap)
+	lay.SortOrder = Enum.SortOrder.LayoutOrder
+	local posBtn, setPosSel
+	if kind ~= "Popup" then
+		posBtn, setPosSel = mkIcn(act, "≡", act.ZIndex + 1, CURF[kind])
+		posBtn.LayoutOrder = 40
+	end
+	local fbtn, setFontSel = mkIcn(act, "Aa", act.ZIndex + 1, CURF[kind])
+	local cls = mkIcn(act, "×", act.ZIndex + 1, CURF[kind], "bad")
+	fbtn.LayoutOrder = 30
+	cls.LayoutOrder = 50
+	local ttl = Instance.new("TextLabel")
+	protectUiInst(ttl)
+	ttl.AnchorPoint = Vector2.new(0, 0.5)
+	ttl.Position = UDim2.new(0, PAD, 0.5, 0)
+	ttl.Size = UDim2.new(1, -PAD * 2, 1, -16)
+	ttl.BackgroundTransparency = 1
+	ttl.TextWrapped = false
+	ttl.TextScaled = false
+	ttl.TextTruncate = Enum.TextTruncate.AtEnd
+	ttl.ClipsDescendants = true
+	ttl.Font = CURF[kind]
+	ttl.TextSize = kind == "Popup" and (isMobile and 22 or 20) or (isMobile and 20 or 18)
+	ttl.TextXAlignment = Enum.TextXAlignment.Left
+	ttl.TextYAlignment = Enum.TextYAlignment.Center
+	ttl.TextColor3 = TH.Ttl
+	ttl.RichText = true
+	ttl.ZIndex = z + 210
+	ttl.Parent = hdr
+	local cnt = Instance.new("TextLabel")
+	protectUiInst(cnt)
+	cnt.AnchorPoint = Vector2.new(1, 0.5)
+	cnt.BackgroundColor3 = TH.BtnHover
+	cnt.BackgroundTransparency = 0.2
+	cnt.BorderSizePixel = 0
+	cnt.Font = CURF[kind]
+	cnt.TextScaled = true
+	cnt.TextColor3 = TH.Ttl
+	cnt.Text = "1x"
+	cnt.ZIndex = z + 210
+	cnt.Visible = false
+	cnt.Parent = hdr
+	local cr = Instance.new("UICorner", cnt)
+	cr.CornerRadius = UDim.new(0, 6)
+	local ccon = Instance.new("UITextSizeConstraint", cnt)
+	ccon.MinTextSize = 10
+	ccon.MaxTextSize = isMobile and 14 or 12
+	local function refTitle()
+		if state.closing then return end
+		local ax, num = 0, 0
+		for _, b in act:GetChildren() do
+			if b:IsA("GuiObject") and b.Visible then
+				ax += b.Size.X.Offset
+				num += 1
+			end
+		end
+		ax += math.max(0, num - 1) * gap
+		local as = UDim2.fromOffset(ax, btnSize)
+		if act.Size ~= as then act.Size = as end
+		local w = owner and owner.Size.X.Offset or par.AbsoluteSize.X / csc(par)
+		local room = math.max(0, w - PAD * 2 - ax - gap)
+		local cw = 0
+		if (state.stackCount or 1) > 1 and room >= 60 then
+			cw = math.min(64, room - 32, math.max(32, ts:GetTextSize(cnt.Text, ccon.MaxTextSize, CURF[kind], Vector2.new(200, 24)).X + 12))
+		end
+		local vis = cw > 0
+		local cp = UDim2.new(1, -PAD - ax - gap, 0.5, 0)
+		local cs = UDim2.fromOffset(cw, btnSize - 8)
+		local titleW = math.max(0, room - (vis and cw + gap or 0))
+		local size = UDim2.new(0, titleW, 1, -16)
+		if cnt.Visible ~= vis then cnt.Visible = vis end
+		if cnt.Position ~= cp then cnt.Position = cp end
+		if cnt.Size ~= cs then cnt.Size = cs end
+		if ttl.Size ~= size then ttl.Size = size end
+		if state.body then
+			local bp = UDim2.fromOffset(0, hh)
+			local bh = UDim2.new(1, 0, 1, -hh - (state.footH or 0))
+			if state.body.Position ~= bp then state.body.Position = bp end
+			if state.body.Size ~= bh then state.body.Size = bh end
+		end
+	end
+	local function watchBtn(b)
+		if b:IsA("GuiObject") then
+			addConnection(b, b:GetPropertyChangedSignal("Visible"):Connect(refTitle))
+			addConnection(b, b:GetPropertyChangedSignal("Size"):Connect(refTitle))
+		end
+	end
+	for _, b in act:GetChildren() do watchBtn(b) end
+	addConnection(act, act.ChildAdded:Connect(function(b)
+		watchBtn(b)
+		refTitle()
+	end))
+	addConnection(act, act.ChildRemoved:Connect(refTitle))
+	if owner then
+		addConnection(owner, owner:GetPropertyChangedSignal("Size"):Connect(refTitle))
+	end
+	state.stackCount = 1
+	state.setStackCount = function(n)
+		local v = math.max(1, math.floor(tonumber(n) or 1))
+		state.stackCount = v
+		cnt.Text = tostring(v) .. "x"
+		refTitle()
+	end
+	state.refTitle = refTitle
+	refTitle()
+	local function closeCard()
+		local p = findCardAncestor(par)
+		if p then
+			local s = ctx(p)
+			if s and s.close then
+				s.close()
+			end
+		end
+	end
+	addConnection(cls, cls.MouseButton1Click:Connect(function()
+		closeCard()
+	end))
+	local fMenu, fCon, rec
+	local pMenu, pCon
+	local closePosFn = function() end
+	local fNonce = 0
+	local pNonce = 0
+	local menuGateUntil = 0
+	local function canToggleMenu()
+		local now = os.clock()
+		if now < menuGateUntil then
+			return false
+		end
+		menuGateUntil = now + 0.07
+		return true
+	end
+	local function disconnectMenuConn(conn)
+		if not conn then
+			return nil
+		end
+		conn:Disconnect()
+		local sp = ctxMap[par]
+		if sp and sp.connections then
+			sp.connections[conn] = nil
+		end
+		return nil
+	end
+	local fontApplyBusy = false
+	local dockApplyBusy = false
+	local function refreshFonts()
+		if not rec then
+			return
+		end
+		for _, r in rec do
+			local on = r.font == CURF[kind]
+			r.set(on)
+		end
+	end
+	local function closeFont()
+		fNonce += 1
+		fCon = disconnectMenuConn(fCon)
+		if fMenu and fMenu.Parent then
+			NotifFuns.hideMenu(fMenu)
+		end
+		fMenu = nil
+		rec = nil
+		setFontSel(false)
+		if kind == "Notify" and onPause then
+			onPause(false)
+		end
+	end
+	local function openFont()
+		if state.closing then
+			return
+		end
+		if fMenu and fMenu.Parent then
+			closeFont()
+			return
+		end
+		closePosFn()
+		if kind == "Notify" and onPause then onPause(true) end
+		setFontSel(true)
+		fNonce += 1
+		local thisNonce = fNonce
+		local m = Instance.new("Frame")
+		m.BackgroundColor3 = TH.Bg
+		m.BackgroundTransparency = 0.05
+		m.BorderSizePixel = 0
+		m.Size = UDim2.fromOffset(math.min(isMobile and 260 or 240, math.max(1, gui.AbsoluteSize.X - 24)), math.min(isMobile and 320 or 270, math.max(1, gui.AbsoluteSize.Y - 24)))
+		m.ZIndex = kind == "Popup" and (POPUP_FRAME_Z + 300) or (ov.ZIndex + 10)
+		m.Parent = ov
+		fMenu = m
+		local c = Instance.new("UICorner", m)
+		c.CornerRadius = UDim.new(0, 6)
+		local s = Instance.new("UIStroke", m)
+		s.Color = TH.Border
+		s.Thickness = 1
+		s.Transparency = 0.8
+		local p = Instance.new("UIPadding", m)
+		p.PaddingTop = UDim.new(0, 10)
+		p.PaddingBottom = UDim.new(0, 10)
+		p.PaddingLeft = UDim.new(0, 10)
+		p.PaddingRight = UDim.new(0, 10)
+		local sf = Instance.new("ScrollingFrame")
+		sf.BackgroundTransparency = 1
+		sf.BorderSizePixel = 0
+		sf.ScrollBarThickness = 4
+		sf.Size = UDim2.fromScale(1, 1)
+		sf.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		sf.CanvasSize = UDim2.new()
+		sf.ZIndex = m.ZIndex + 1
+		sf.Parent = m
+		local lay2 = Instance.new("UIListLayout", sf)
+		lay2.Padding = UDim.new(0, 6)
+		lay2.SortOrder = Enum.SortOrder.LayoutOrder
+		rec = {}
+		for _, pair in FONTS do
+			local b = mkMenuBtn(sf, pair[1], sf.ZIndex + 1, CURF[kind])
+			local setSel = function(on)
+				b:SetAttribute("sel", on)
+				local props = {
+					BackgroundColor3 = on and TH.BtnSel or TH.Btn,
+					BackgroundTransparency = on and 0 or 1,
+					TextColor3 = on and TH.Bg or TH.Txt
+				}
+				if ctxMap[m] and ctxMap[m].shown then
+					NotifFuns.tween(b, TweenInfo.new(0.12), props)
+				else
+					for prop, v in props do b[prop] = v end
+				end
+			end
+			table.insert(rec, {
+				btn = b,
+				font = pair[2],
+				set = setSel
+			})
+			addConnection(b, b.MouseButton1Click:Connect(function()
+				if fontApplyBusy then
+					return
+				end
+				fontApplyBusy = true
+				local ok = pcall(function()
+					setFontKind(kind, pair[2])
+					applyFontTree(par, pair[2])
+					refreshFonts()
+					refTitle()
+				end)
+				fontApplyBusy = false
+				if not ok then
+					return
+				end
+			end))
+		end
+		refreshFonts()
+		placeMenu(fbtn, m)
+		fCon = disconnectMenuConn(fCon)
+		fCon = rs.Heartbeat:Connect(function()
+			if thisNonce ~= fNonce then
+				fCon = disconnectMenuConn(fCon)
+				return
+			end
+			if fMenu == m and fMenu.Parent and fbtn and fbtn.Parent then
+				placeMenu(fbtn, fMenu)
+			else
+				fCon = disconnectMenuConn(fCon)
+			end
+		end)
+		addConnection(par, fCon)
+		NotifFuns.showMenu(m, owner or par)
+	end
+	addConnection(fbtn, fbtn.MouseButton1Click:Connect(function()
+		if not canToggleMenu() then
+			return
+		end
+		if state.closing then
+			return
+		end
+		if fMenu then
+			closeFont()
+		else
+			openFont()
+		end
+	end))
+	if posBtn then
+		local POS = {
+			{ "Top", "top" },
+			{ "Bottom", "bottom" },
+			{ "Top Right", "topRight" },
+			{ "Top Left", "topLeft" },
+			{ "Bottom Right", "bottomRight" },
+			{ "Bottom Left", "bottomLeft" }
+		}
+		local function closePos()
+			pNonce += 1
+			pCon = disconnectMenuConn(pCon)
+			if pMenu and pMenu.Parent then
+				NotifFuns.hideMenu(pMenu)
+			end
+			pMenu = nil
+			setPosSel(false)
+			if kind == "Notify" and onPause then
+				onPause(false)
+			end
+		end
+		local function openPos()
+			if state.closing then
+				return
+			end
+			if pMenu and pMenu.Parent then
+				closePos()
+				return
+			end
+			closeFont()
+			if kind == "Notify" and onPause then onPause(true) end
+			setPosSel(true)
+			pNonce += 1
+			local thisNonce = pNonce
+			local m = Instance.new("Frame")
+			m.BackgroundColor3 = TH.Bg
+			m.BackgroundTransparency = 0.05
+			m.BorderSizePixel = 0
+			m.Size = UDim2.fromOffset(math.min(isMobile and 230 or 210, math.max(1, gui.AbsoluteSize.X - 24)), math.min(isMobile and 314 or 266, math.max(1, gui.AbsoluteSize.Y - 24)))
+			m.ZIndex = kind == "Popup" and (POPUP_FRAME_Z + 300) or (ov.ZIndex + 10)
+			m.Parent = ov
+			pMenu = m
+			local c = Instance.new("UICorner", m)
+			c.CornerRadius = UDim.new(0, 6)
+			local s = Instance.new("UIStroke", m)
+			s.Color = TH.Border
+			s.Thickness = 1
+			s.Transparency = 0.8
+			local padF = Instance.new("UIPadding", m)
+			padF.PaddingTop = UDim.new(0, 10)
+			padF.PaddingBottom = UDim.new(0, 10)
+			padF.PaddingLeft = UDim.new(0, 10)
+			padF.PaddingRight = UDim.new(0, 10)
+			local sf = Instance.new("ScrollingFrame")
+			sf.BackgroundTransparency = 1
+			sf.BorderSizePixel = 0
+			sf.ScrollBarThickness = 3
+			sf.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			sf.CanvasSize = UDim2.new()
+			sf.Size = UDim2.fromScale(1, 1)
+			sf.ZIndex = m.ZIndex + 1
+			sf.Parent = m
+			local list = Instance.new("UIListLayout", sf)
+			list.Padding = UDim.new(0, 6)
+			list.SortOrder = Enum.SortOrder.LayoutOrder
+			for _, ent in POS do
+				local b = mkMenuBtn(sf, ent[1], m.ZIndex + 2, CURF[kind])
+				b:SetAttribute("sel", state.dock == ent[2])
+				if state.dock == ent[2] then
+					b.BackgroundColor3 = TH.BtnSel
+					b.BackgroundTransparency = 0
+					b.TextColor3 = TH.Bg
+				end
+				addConnection(b, b.MouseButton1Click:Connect(function()
+					if dockApplyBusy then
+						return
+					end
+					dockApplyBusy = true
+					pcall(function()
+						local p0 = findCardAncestor(par)
+						local s0 = ctx(p0)
+						if s0.setDock then
+							s0.setDock(ent[2], true)
+						end
+						closePos()
+					end)
+					dockApplyBusy = false
+				end))
+			end
+			placeMenu(posBtn, m)
+			pCon = disconnectMenuConn(pCon)
+			pCon = rs.Heartbeat:Connect(function()
+				if thisNonce ~= pNonce then
+					pCon = disconnectMenuConn(pCon)
+					return
+				end
+				if pMenu == m and pMenu.Parent and posBtn and posBtn.Parent then
+					placeMenu(posBtn, pMenu)
+				else
+					pCon = disconnectMenuConn(pCon)
+				end
+			end)
+			addConnection(par, pCon)
+			NotifFuns.showMenu(m, owner or par)
+		end
+		addConnection(posBtn, posBtn.MouseButton1Click:Connect(function()
+			if not canToggleMenu() then
+				return
+			end
+			if state.closing then
+				return
+			end
+			if pMenu then
+				closePos()
+			else
+				openPos()
+			end
+		end))
+		closePosFn = closePos
+	end
+	state.closeMenus = function()
+		closeFont()
+		closePosFn()
+	end
+	return hdr, ttl, act
+end
+mkHdr = NotifFuns.mkHdr
+
+function NotifFuns.attachTimer(card, fil, dur)
+	local hover = uis.MouseEnabled
+	local ext = false
+	local hov = false
+	local s = ctx(card)
+	local function closeCard()
+		if s and s.close and (not s.closing) then
+			s.close()
+		end
+	end
+	if not fil then
+		local runDur = dur
+		local rem = runDur
+		local th
+		local function start()
+			if th and coroutine.status(th) ~= "dead" then
+				return
+			end
+			th = task.spawn(function()
+				local last = os.clock()
+				while rem > 0 do
+					if s.closing then
+						break
+					end
+					if ext or hov then
+						last = os.clock()
+						task.wait(0.05)
+					else
+						local now = os.clock()
+						local dt = now - last
+						rem -= dt
+						last = now
+						task.wait(0.05)
+					end
+				end
+				th = nil
+				if not ext and (not hov) and (not s.closing) then
+					closeCard()
+				end
+			end)
+		end
+		start()
+		addConnection(card, card.Destroying:Connect(function()
+			ext = true
+			rem = 0
+		end))
+		if hover then
+			addConnection(card, card.MouseEnter:Connect(function()
+				hov = true
+			end))
+			addConnection(card, card.MouseLeave:Connect(function()
+				hov = false
+			end))
+		end
+		return {
+			pause = function()
+				ext = true
+			end,
+			resume = function()
+				if not ext then
+					return
+				end
+				ext = false
+				start()
+			end,
+			reset = function(newDur)
+				if typeof(newDur) == "number" and newDur > 0 then
+					runDur = newDur
+				end
+				rem = runDur
+				if not ext and (not hov) then
+					start()
+				end
+			end
+		}
+	end
+	local frac = 1
+	local runDur = dur
+	local tn
+	local function stop()
+		if tn then
+			tn:Cancel()
+			tn = nil
+		end
+	end
+	local function playFrom(f)
+		if s.closing then
+			stop()
+			return
+		end
+		fil.Size = UDim2.new(f, 0, 1, 0)
+		stop()
+		local d = math.max(0.01, runDur * f)
+		tn = tw:Create(fil, TweenInfo.new(d, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
+			Size = UDim2.new(0, 0, 1, 0)
+		})
+		local doneConn
+		doneConn = addConnection(fil, tn.Completed:Connect(function()
+			if doneConn then
+				local sf = ctxMap[fil]
+				if sf and sf.connections then
+					sf.connections[doneConn] = nil
+				end
+				pcall(function() doneConn:Disconnect() end)
+				doneConn = nil
+			end
+			if not ext and (not hov) and fil.Size.X.Scale <= 0.001 and (not s.closing) then
+				closeCard()
+			end
+		end))
+		tn:Play()
+		addTween(fil, tn)
+	end
+	local function ref()
+		if s.closing then
+			stop()
+			return
+		end
+		if ext or hov then
+			stop()
+			frac = fil.Size.X.Scale
+		else
+			playFrom(frac)
+		end
+	end
+	playFrom(frac)
+	if hover then
+		addConnection(card, card.MouseEnter:Connect(function()
+			hov = true
+			ref()
+		end))
+		addConnection(card, card.MouseLeave:Connect(function()
+			hov = false
+			ref()
+		end))
+	end
+	return {
+		pause = function()
+			ext = true
+			ref()
+		end,
+		resume = function()
+			ext = false
+			ref()
+		end,
+		reset = function(newDur)
+			if typeof(newDur) == "number" and newDur > 0 then
+				runDur = newDur
+			end
+			frac = 1
+			fil.Size = UDim2.new(1, 0, 1, 0)
+			if ext or hov then
+				stop()
+			else
+				playFrom(1)
+			end
+		end
+	}
+end
+attachTimer = NotifFuns.attachTimer
+
+function NotifFuns.calcCellH(w, list, font)
+	local h = isMobile and 48 or 42
+	for _, info in list do
+		local t = tostring(info.Text or "")
+		local iconSpace = 0
+		local raw = info.Image
+		if raw ~= nil then
+			if typeof(raw) == "number" then
+				raw = "rbxassetid://" .. raw
+			elseif typeof(raw) ~= "string" then
+				raw = nil
+			end
+		end
+		if raw and raw ~= "" then
+			iconSpace = isMobile and 36 or 32
+		end
+		local avail = math.max(10, w - 28 - iconSpace)
+		local sz = ts:GetTextSize(t, isMobile and 15 or 14, font, Vector2.new(avail, math.huge))
+		h = math.max(h, math.ceil(sz.Y) + (isMobile and 20 or 18))
+	end
+	return math.clamp(h, isMobile and 48 or 42, isMobile and 140 or 110)
+end
+calcCellH = NotifFuns.calcCellH
+
+function NotifFuns.mkBtnArea(cntObj, list, owner, z, maxH, font)
+	if not list or #list == 0 then
+		return
+	end
+	local sf = Instance.new("ScrollingFrame")
+	sf.BackgroundTransparency = 1
+	sf.BorderSizePixel = 0
+	sf.Active = (ctx(owner).kind == "Popup")
+	sf.ScrollingEnabled = (ctx(owner).kind == "Popup")
+	sf.ScrollBarThickness = (ctx(owner).kind == "Popup") and (isMobile and 8 or 6) or 0
+	sf.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	sf.CanvasSize = UDim2.new()
+	sf.Size = UDim2.new(1, 0, 0, 0)
+	sf.ZIndex = z or 10
+	sf.ClipsDescendants = true
+	sf.Parent = cntObj
+	local grid = Instance.new("UIGridLayout", sf)
+	grid.CellPadding = UDim2.new(0, isMobile and 14 or 12, 0, isMobile and 14 or 12)
+	grid.FillDirectionMaxCells = 1
+	grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	grid.SortOrder = Enum.SortOrder.LayoutOrder
+	local function scv()
+		return csc(owner)
+	end
+	local function fitCells()
+		local sca = scv()
+		local w = sf.AbsoluteSize.X / sca
+		if w <= 0 then
+			return
+		end
+		local gap = isMobile and 14 or 12
+		local cols
+		if isMobile then
+			cols = math.min(3, #list)
+		else
+			local minCell = 140
+			cols = math.floor((w + gap) / (minCell + gap))
+			cols = math.clamp(cols, 1, 3)
+			cols = math.min(cols, #list)
+		end
+		grid.FillDirectionMaxCells = cols
+		if cols <= 1 then
+			local ch = calcCellH(w, list, font)
+			grid.CellSize = UDim2.new(1, 0, 0, ch)
+		else
+			local bw = math.floor((w - (cols - 1) * gap) / cols)
+			if (not isMobile) and bw < 80 then
+				cols = math.max(1, cols - 1)
+				grid.FillDirectionMaxCells = cols
+				if cols <= 1 then
+					local ch = calcCellH(w, list, font)
+					grid.CellSize = UDim2.new(1, 0, 0, ch)
+					return
+				end
+				bw = math.floor((w - (cols - 1) * gap) / cols)
+			end
+			local ch = calcCellH(bw, list, font)
+			grid.CellSize = UDim2.new(0, bw, 0, ch)
+		end
+	end
+	addConnection(sf, sf:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		fitCells()
+	end))
+	local function fitH()
+		local sca = scv()
+		local need = (grid.AbsoluteContentSize.Y + (isMobile and 10 or 8)) / sca
+		local cap = math.min(430, math.max(44, maxH or math.floor(gui.AbsoluteSize.Y * 0.52))) / sca
+		local h = math.min(need, cap)
+		local size = UDim2.new(1, 0, 0, h)
+		if sf.Size ~= size then sf.Size = size end
+		sf.ScrollingEnabled = need > cap
+		sf.ScrollBarThickness = need > cap and (isMobile and 8 or 6) or 0
+		task.defer(function()
+			if owner.Parent then NotifFuns.resizeCard(owner) end
+		end)
+	end
+	addConnection(grid, grid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		fitH()
+	end))
+	task.defer(function()
+		fitCells()
+		fitH()
+	end)
+	task.defer(function()
+		local so = ctx(owner)
+		if so and so.sc and so.sc.GetPropertyChangedSignal then
+			addConnection(owner, so.sc:GetPropertyChangedSignal("Scale"):Connect(function()
+				task.defer(fitCells)
+				task.defer(fitH)
+			end))
+		end
+	end)
+	local s = ctx(owner)
+	s.sel = s.sel or {}
+	s.btns = s.btns or {}
+	for _, info in list do
+		local b = Instance.new("TextButton")
+		b.AutoButtonColor = false
+		b.Text = ""
+		b.ZIndex = (z or 10) + 1
+		b.BackgroundColor3 = TH.Btn
+		b.BackgroundTransparency = 1
+		b.ClipsDescendants = true
+		b.Parent = sf
+		local cr = Instance.new("UICorner", b)
+		cr.CornerRadius = UDim.new(0, 6)
+		local st = Instance.new("UIStroke", b)
+		st.Color = TH.Border
+		st.Transparency = 0.92
+		st.Thickness = 1
+		local pad = Instance.new("UIPadding", b)
+		pad.PaddingTop = UDim.new(0, isMobile and 14 or 12)
+		pad.PaddingBottom = UDim.new(0, isMobile and 14 or 12)
+		pad.PaddingRight = UDim.new(0, isMobile and 18 or 16)
+		pad.PaddingLeft = UDim.new(0, isMobile and 18 or 16)
+		local lay = Instance.new("UIListLayout", b)
+		lay.FillDirection = Enum.FillDirection.Horizontal
+		lay.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		lay.VerticalAlignment = Enum.VerticalAlignment.Center
+		lay.SortOrder = Enum.SortOrder.LayoutOrder
+		local raw = info.Image
+		if raw ~= nil then
+			if typeof(raw) == "number" then
+				raw = "rbxassetid://" .. raw
+			elseif typeof(raw) ~= "string" then
+				raw = nil
+			end
+		end
+		local hasIcon = raw and raw ~= "" and true or false
+		lay.Padding = UDim.new(0, hasIcon and (isMobile and 12 or 10) or 0)
+		local ic = Instance.new("ImageLabel")
+		ic.BackgroundTransparency = 1
+		ic.Image = raw and raw or ""
+		ic.Visible = hasIcon
+		ic.ImageTransparency = hasIcon and 0 or 1
+		ic.ScaleType = Enum.ScaleType.Fit
+		ic.ZIndex = b.ZIndex + 2
+		ic.LayoutOrder = 10
+		ic.Size = hasIcon and UDim2.fromOffset((isMobile and 24 or 22), (isMobile and 24 or 22)) or UDim2.new(0, 0, 0, 0)
+		ic.Parent = b
+		local lb = Instance.new("TextLabel")
+		lb.BackgroundTransparency = 1
+		lb.TextColor3 = TH.Txt
+		lb.RichText = true
+		lb.TextWrapped = true
+		lb.TextScaled = false
+		lb.TextSize = isMobile and 15 or 14
+		lb.Font = font or Enum.Font.GothamBold
+		lb.Text = info.Text or ""
+		lb.ZIndex = b.ZIndex + 2
+		lb.LayoutOrder = 20
+		lb.TextYAlignment = Enum.TextYAlignment.Center
+		lb.TextXAlignment = hasIcon and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+		lb.Size = UDim2.new(1, hasIcon and (isMobile and -36 or -32) or 0, 1, 0)
+		lb.Parent = b
+		local function setSel(on, instant)
+			b:SetAttribute("sel", on)
+			if instant then
+				if on then
+					b.BackgroundColor3 = TH.BtnSel
+					b.BackgroundTransparency = 0
+					st.Transparency = 0.7
+					lb.TextColor3 = TH.Bg
+					if hasIcon then
+						ic.ImageColor3 = TH.Bg
+					end
+				else
+					b.BackgroundColor3 = TH.Btn
+					b.BackgroundTransparency = 1
+					st.Transparency = 0.92
+					lb.TextColor3 = TH.Txt
+					if hasIcon then
+						ic.ImageColor3 = TH.Txt
+					end
+				end
+				return
+			end
+			if on then
+				tw:Create(b, TweenInfo.new(0.12), {
+					BackgroundColor3 = TH.BtnSel,
+					BackgroundTransparency = 0
+				}):Play()
+				tw:Create(st, TweenInfo.new(0.12), {
+					Transparency = 0.7
+				}):Play()
+				tw:Create(lb, TweenInfo.new(0.12), {
+					TextColor3 = TH.Bg
+				}):Play()
+				if hasIcon then
+					tw:Create(ic, TweenInfo.new(0.12), {
+						ImageColor3 = TH.Bg
+					}):Play()
+				end
+			else
+				tw:Create(b, TweenInfo.new(0.12), {
+					BackgroundColor3 = TH.Btn,
+					BackgroundTransparency = 1
+				}):Play()
+				tw:Create(st, TweenInfo.new(0.12), {
+					Transparency = 0.92
+				}):Play()
+				tw:Create(lb, TweenInfo.new(0.12), {
+					TextColor3 = TH.Txt
+				}):Play()
+				if hasIcon then
+					tw:Create(ic, TweenInfo.new(0.12), {
+						ImageColor3 = TH.Txt
+					}):Play()
+				end
+			end
+		end
+		s.btns[b] = {
+			info = info,
+			set = setSel
+		}
+		setSel(false, true)
+		addConnection(b, b.MouseEnter:Connect(function()
+			if b:GetAttribute("sel") then
+				return
+			end
+			tw:Create(b, TweenInfo.new(0.12), {
+				BackgroundTransparency = 0
+			}):Play()
+			tw:Create(b, TweenInfo.new(0.12), {
+				BackgroundColor3 = TH.BtnHover
+			}):Play()
+			tw:Create(st, TweenInfo.new(0.12), {
+				Transparency = 0.85
+			}):Play()
+		end))
+		addConnection(b, b.MouseLeave:Connect(function()
+			if b:GetAttribute("sel") then
+				return
+			end
+			tw:Create(b, TweenInfo.new(0.12), {
+				BackgroundTransparency = 1
+			}):Play()
+			tw:Create(b, TweenInfo.new(0.12), {
+				BackgroundColor3 = TH.Btn
+			}):Play()
+			tw:Create(st, TweenInfo.new(0.12), {
+				Transparency = 0.92
+			}):Play()
+		end))
+		addConnection(b, b.MouseButton1Click:Connect(function()
+			if s.multi then
+				local i = table.find(s.sel, info)
+				if i then
+					table.remove(s.sel, i)
+					setSel(false)
+				else
+					table.insert(s.sel, info)
+					setSel(true)
+				end
+				if s.ok then
+					s.ok(#s.sel > 0)
+				end
+			else
+				if info.Callback then
+					local t = s.inp and s.inp.Text or ""
+					info.Callback(t)
+				end
+				if s.close then
+					s.close()
+				end
+			end
+		end))
+	end
+	return sf
+end
+mkBtnArea = NotifFuns.mkBtnArea
+
+function NotifFuns.widthForDock(dock, kind)
+	if dock == "top" or dock == "bottom" or kind == "Popup" then
+		return wW()
+	end
+	return nW()
+end
+widthForDock = NotifFuns.widthForDock
+
+function NotifFuns.dirFrom(str)
+	local dock = mapDock(str)
+	local x = (dock == "topLeft" or dock == "bottomLeft") and -24 or ((dock == "topRight" or dock == "bottomRight") and 24 or 0)
+	local y = (dock == "bottom" or dock == "bottomLeft" or dock == "bottomRight") and 12 or -12
+	return { dx = x, dy = y }
+end
+dirFrom = NotifFuns.dirFrom
+
+NotifFuns.NAStyle.rememberTransparency = function(inst, attr, prop)
+	local okAttr, stored = pcall(function()
+		return inst:GetAttribute(attr)
+	end)
+	if okAttr and type(stored) == "number" then
+		return stored
+	end
+	local okProp, current = pcall(function()
+		return inst[prop]
+	end)
+	current = (okProp and type(current) == "number") and current or 0
+	pcall(function()
+		inst:SetAttribute(attr, current)
+	end)
+	return current
+end
+
+function NotifFuns.fadeNACardContent(rootObj, hidden, duration)
+	if not (rootObj and rootObj.Parent) then
+		return
+	end
+	local style = NotifFuns.NAStyle
+	local props = {}
+	NotifFuns.stopSpring(rootObj, "fade")
+	local function add(inst, attr, prop)
+		local stored = style.rememberTransparency(inst, attr, prop)
+		local target = hidden and 1 or stored
+		if duration then
+			table.insert(props, { inst, prop, inst[prop], target })
+		else
+			inst[prop] = target
+		end
+	end
+	for _, inst in rootObj:QueryDescendants("Instance") do
+		if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+			add(inst, style.fadeTextAttr, "TextTransparency")
+		end
+		if inst:IsA("ImageLabel") or inst:IsA("ImageButton") then
+			add(inst, style.fadeImageAttr, "ImageTransparency")
+		end
+		if inst:IsA("GuiObject") and inst ~= rootObj then
+			add(inst, style.fadeBgAttr, "BackgroundTransparency")
+		elseif inst:IsA("UIStroke") and inst.Parent ~= rootObj then
+			add(inst, style.fadeStrokeAttr, "Transparency")
+		end
+	end
+	if duration then
+		NotifFuns.spring(rootObj, "fade", 0, 1, 6 / duration, function(v)
+			for _, p in props do
+				if p[1].Parent then p[1][p[2]] = p[3] + (p[4] - p[3]) * v end
+			end
+		end)
+	end
+end
+
+local STACKED_NOTIFS = {}
+
+function NotifFuns.canStackNotify(p)
+	local btns = p and p.Buttons
+	return (not (p and p.InputField)) and (type(btns) ~= "table" or #btns == 0)
+end
+canStackNotify = NotifFuns.canStackNotify
+
+function NotifFuns.notifyStackKey(dock, p)
+	return table.concat({
+		tostring(dock or "topRight"),
+		tostring((p and p.Title) or "Notify"),
+		tostring((p and p.Description) or p and p.Content or ""),
+		tostring((p and p.Duration) or "")
+	}, "\30")
+end
+notifyStackKey = NotifFuns.notifyStackKey
+
+function NotifFuns.cardSize(card)
+	local s = ctx(card)
+	local sca = csc(card)
+	local tl, br = inz()
+	local off = isMobile and 16 or 24
+	local room = math.max(1, gui.AbsoluteSize.Y - tl.Y - br.Y - off * 2) / sca
+	local hh = s.headH or (isMobile and 60 or 56)
+	local fh = (s.trk and s.trk.Visible) and (isMobile and 14 or 12) or 0
+	s.footH = fh
+	local need = cntH(s.cnt)
+	local h = math.min(hh + need + fh, room)
+	local bh = math.max(0, h - hh - fh)
+	if s.body then
+		local pos = UDim2.fromOffset(0, hh)
+		local size = UDim2.new(1, 0, 1, -hh - fh)
+		if s.body.Position ~= pos then s.body.Position = pos end
+		if s.body.Size ~= size then s.body.Size = size end
+	end
+	if s.cnt then
+		s.cnt.ScrollingEnabled = need > bh + 1 or s.kind == "Popup"
+		s.cnt.Active = s.cnt.ScrollingEnabled
+		s.cnt.ScrollBarThickness = need > bh + 1 and (isMobile and 5 or 3) or 0
+	end
+	return UDim2.fromOffset(widthForDock(s.dock, s.kind), math.max(1, h))
+end
+
+function NotifFuns.resizeCard(card)
+	local s = ctxMap[card]
+	if not (s and s.opened and card.Parent) or s.closing then
+		return
+	end
+	local size = NotifFuns.cardSize(card)
+	if s.wantSize == size then
+		return
+	end
+	s.wantSize = size
+	NotifFuns.sizeCard(card, Vector2.new(size.X.Offset, size.Y.Offset))
+end
+
+function NotifFuns.sizeCard(card, goal, done)
+	local size = card.Size
+	return NotifFuns.spring(card, "size", Vector2.new(size.X.Offset, size.Y.Offset), goal, 28, function(v)
+		card.Size = UDim2.fromOffset(math.max(1, v.X), math.max(0, v.Y))
+	end, done)
+end
+
+function NotifFuns.moveCard(card, goal, rate, start)
+	local s = ctx(card)
+	local shell = s.shell
+	local pos = shell.Position
+	local r = NotifFuns.spring(card, "pos", start or Vector2.new(pos.X.Offset, pos.Y.Offset), goal, rate, function(v)
+		shell.Position = UDim2.fromOffset(v.X, v.Y)
+	end)
+	if start then
+		r.val = start
+		r.step(start)
+	end
+	return r
+end
+
+function NotifFuns.trackCard(card)
+	local s = ctxMap[card]
+	local pos = card.AbsolutePosition
+	local old = s.lastPos
+	s.lastPos = pos
+	if not old or not s.opened or s.rebase or s.kind == "Popup" then return end
+	local d = (old - pos) / csc(card)
+	if d.Magnitude < 0.01 then return end
+	local r = s.springs and s.springs.pos
+	if r then
+		r.val += d
+		r.step(r.val)
+	else
+		local p = s.shell.Position
+		NotifFuns.moveCard(card, Vector2.new(0, 0), 24, Vector2.new(p.X.Offset, p.Y.Offset) + d)
+	end
+end
+
+function NotifFuns.stopMotion(card)
+	for _, key in { "size", "pos", "bg", "stroke" } do
+		NotifFuns.stopSpring(card, key)
+	end
+end
+
+function NotifFuns.appear(card, sc, st, tgt, from, cntObj)
+	local s = ctx(card)
+	if s.closing then return end
+	NotifFuns.stopMotion(card)
+	s.wantSize = tgt
+	s.opened = true
+	local shell = s.shell or card
+	card.Rotation = 0
+	card.Size = UDim2.new(tgt.X.Scale, tgt.X.Offset, 0, 0)
+	sc.Scale = s.baseScale or 1
+	shell.Position = UDim2.fromOffset(from.dx or 0, from.dy or 0)
+	shell.BackgroundTransparency = 1
+	st.Transparency = 1
+	s.lastPos = card.AbsolutePosition
+	NotifFuns.fadeNACardContent(shell, true)
+	NotifFuns.sizeCard(card, Vector2.new(tgt.X.Offset, tgt.Y.Offset))
+	NotifFuns.moveCard(card, Vector2.new(0, 0), 22)
+	NotifFuns.springProp(card, "bg", shell, "BackgroundTransparency", 0.5, 30)
+	NotifFuns.springProp(card, "stroke", st, "Transparency", 0.82, 32)
+	NotifFuns.fadeNACardContent(shell, false, 0.22)
+end
+appear = NotifFuns.appear
+
+function NotifFuns.disappear(card, sc, st)
+	local s = ctx(card)
+	local shell = s.shell or card
+	local from = dirFrom(s.dock or "topRight")
+	NotifFuns.fadeNACardContent(shell, true, 0.14)
+	NotifFuns.moveCard(card, Vector2.new(from.dx * 1.5, from.dy), 26)
+	NotifFuns.springProp(card, "bg", shell, "BackgroundTransparency", 1, 36)
+	NotifFuns.springProp(card, "stroke", st, "Transparency", 1, 36)
+	task.delay(0.1, function()
+		if ctxMap[card] ~= s or not card.Parent then return end
+		NotifFuns.sizeCard(card, Vector2.new(card.Size.X.Offset, 0), function()
+			if ctxMap[card] == s and s.finish then s.finish() end
+		end)
+	end)
+end
+disappear = NotifFuns.disappear
+
+function NotifFuns.mkCard(w, baseZ, kind, onPause)
+	local z = baseZ or 100 + tick() % 1 * 1000
+	local card = Instance.new("Frame")
+	protectUiInst(card, UI_ATTR.CARD)
+	card.LayoutOrder = os.clock() * 1000
+	card.Size = UDim2.new(0, w, 0, 0)
+	card.BackgroundColor3 = TH.Bg
+	card.BackgroundTransparency = 1
+	card.ZIndex = z
+	card.BorderSizePixel = 0
+	card.Active = kind == "Popup"
+	card.ClipsDescendants = false
+	local shell = Instance.new("Frame")
+	protectUiInst(shell)
+	shell.Name = "NAStyleShell"
+	shell.Position = UDim2.fromOffset(0, 0)
+	shell.Size = UDim2.fromScale(1, 1)
+	shell.BackgroundColor3 = TH.Bg
+	shell.BackgroundTransparency = 1
+	shell.BorderSizePixel = 0
+	shell.ClipsDescendants = true
+	shell.ZIndex = z
+	shell.Parent = card
+	local cr = Instance.new("UICorner", shell)
+	cr.CornerRadius = UDim.new(0, 6)
+	local st = Instance.new("UIStroke", shell)
+	st.Color = TH.Border
+	st.Thickness = 1
+	st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	st.Transparency = 1
+	local grad = Instance.new("UIGradient", shell)
+	grad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(210, 213, 222))
+	})
+	grad.Rotation = 90
+	local sc = Instance.new("UIScale", card)
+	sc.Scale = mobScale()
+	local s0 = ctx(card)
+	s0.sc = sc
+	s0.baseScale = sc.Scale
+	s0.shell = shell
+	addConnection(card, card:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+		if ctxMap[card] then NotifFuns.trackCard(card) end
+	end))
+	local hdrHeight = isMobile and 60 or 56
+	local body = Instance.new("Frame")
+	protectUiInst(body)
+	body.BackgroundTransparency = 1
+	body.Position = UDim2.new(0, 0, 0, hdrHeight)
+	body.Size = UDim2.new(1, 0, 1, -hdrHeight)
+	body.ZIndex = z + 110
+	body.Parent = shell
+	s0.body = body
+	local cntObj = Instance.new("ScrollingFrame")
+	protectUiInst(cntObj)
+	cntObj.Active = kind == "Popup"
+	cntObj.ScrollingEnabled = kind == "Popup"
+	cntObj.BackgroundTransparency = 1
+	cntObj.BorderSizePixel = 0
+	cntObj.ScrollBarThickness = (kind == "Popup") and (isMobile and 6 or 4) or 0
+	cntObj.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	cntObj.CanvasSize = UDim2.new()
+	cntObj.Size = UDim2.new(1, 0, 1, 0)
+	cntObj.ClipsDescendants = true
+	cntObj.ZIndex = z + 120
+	cntObj.Parent = body
+	local pad = Instance.new("UIPadding", cntObj)
+	pad.PaddingLeft = UDim.new(0, PAD)
+	pad.PaddingRight = UDim.new(0, PAD)
+	pad.PaddingTop = UDim.new(0, 12)
+	pad.PaddingBottom = UDim.new(0, PAD)
+	local col = Instance.new("UIListLayout", cntObj)
+	col.Padding = UDim.new(0, isMobile and 12 or 10)
+	col.FillDirection = Enum.FillDirection.Vertical
+	col.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	col.SortOrder = Enum.SortOrder.LayoutOrder
+	addConnection(card, col:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		NotifFuns.resizeCard(card)
+	end))
+	local ftr = Instance.new("Frame")
+	protectUiInst(ftr)
+	ftr.AnchorPoint = Vector2.new(0, 1)
+	ftr.Position = UDim2.new(0, 0, 1, 0)
+	ftr.Size = UDim2.new(1, 0, 0, isMobile and 14 or 12)
+	ftr.BackgroundTransparency = 1
+	ftr.ZIndex = z + 130
+	ftr.Parent = shell
+	local trk = Instance.new("Frame")
+	protectUiInst(trk)
+	trk.AnchorPoint = Vector2.new(0.5, 0.5)
+	trk.Position = UDim2.new(0.5, 0, 0.5, 0)
+	trk.Size = UDim2.new(1, -PAD * 2, 0, 2)
+	trk.BackgroundTransparency = 0.9
+	trk.BackgroundColor3 = TH.Progress
+	trk.BorderSizePixel = 0
+	trk.ZIndex = z + 140
+	trk.Parent = ftr
+	local c1 = Instance.new("UICorner", trk)
+	c1.CornerRadius = UDim.new(0, 6)
+	local fil = Instance.new("Frame")
+	protectUiInst(fil)
+	fil.AnchorPoint = Vector2.new(0, 0.5)
+	fil.Position = UDim2.new(0, 0, 0.5, 0)
+	fil.Size = UDim2.new(1, 0, 1, 0)
+	fil.BackgroundTransparency = 0.15
+	fil.BackgroundColor3 = TH.Progress
+	fil.BorderSizePixel = 0
+	fil.ZIndex = z + 141
+	fil.Parent = trk
+	local c2 = Instance.new("UICorner", fil)
+	c2.CornerRadius = UDim.new(0, 6)
+	local hdr, ttl, act = mkHdr(shell, z, kind, onPause, card)
+	return card, hdr, ttl, act, st, sc, cntObj, ftr, trk, fil
+end
+mkCard = NotifFuns.mkCard
+
+function NotifFuns.openIn(card, par, ftr, trk, st, sc, from, cntObj)
+	card.Parent = par
+	card.Visible = true
+	task.defer(function()
+		rs.Heartbeat:Wait()
+		rs.Heartbeat:Wait()
+		local s = ctxMap[card]
+		if not (s and card.Parent and gui) or s.closing then return end
+		if s.refTitle then s.refTitle() end
+		appear(card, sc, st, NotifFuns.cardSize(card), dirFrom(s.dock), cntObj)
+	end)
+end
+openIn = NotifFuns.openIn
+
+function NotifFuns.enforcePopupFrameZ(rootObj)
+	if not rootObj then
+		return
+	end
+	if rootObj:IsA("Frame") then
+		rootObj.ZIndex = POPUP_FRAME_Z + 10
+	end
+	walkDescImpl(rootObj, function(d)
+		if d:IsA("Frame") then
+			d.ZIndex = POPUP_FRAME_Z
+		end
+	end)
+end
+enforcePopupFrameZ = NotifFuns.enforcePopupFrameZ
+
+function NotifFuns.build(kind, p)
+	ensureGui()
+	p = typeof(p) == "table" and p or {}
+	if p.Content and not p.Description then
+		p.Description = p.Content
+	end
+	local def = kind == "Notify" and "topRight" or "top"
+	local dock = mapDock(p.Dock or CURD[kind] or def)
+	local stackKey
+	if kind == "Notify" and canStackNotify(p) then
+		stackKey = notifyStackKey(dock, p)
+		local exCard = STACKED_NOTIFS[stackKey]
+		if exCard and exCard.Parent then
+			local exState = ctx(exCard)
+			if exState and (not exState.closing) then
+				local newCount = math.max(1, math.floor(tonumber(exState.stackCount) or 1)) + 1
+				if exState.setStackCount then
+					exState.setStackCount(newCount)
+				else
+					exState.stackCount = newCount
+				end
+				exCard.LayoutOrder = os.clock() * 1000
+				local newDur = typeof(p.Duration) == "number" and p.Duration > 0 and p.Duration or nil
+				if exState.timCtl and exState.timCtl.reset then
+					exState.timCtl.reset(newDur)
+				end
+				return exCard
+			end
+		end
+		STACKED_NOTIFS[stackKey] = nil
+	end
+	local from
+	if dock == "top" then
+		from = dirFrom("top")
+	elseif dock == "bottom" then
+		from = dirFrom("bottom")
+	elseif dock == "topRight" then
+		from = dirFrom("top right")
+	elseif dock == "topLeft" then
+		from = dirFrom("top left")
+	elseif dock == "bottomRight" then
+		from = dirFrom("bottom right")
+	else
+		from = dirFrom("bottom left")
+	end
+	local w = widthForDock(dock, kind)
+	local baseZ, grp
+	local function destroyPopupRoot()
+		local rootObj = grp
+		grp = nil
+		if rootObj and rootObj.Parent then
+			cleanup(rootObj)
+			pcall(function()
+				rootObj:Destroy()
+			end)
+		end
+	end
+	if kind == "Popup" then
+		grp = Instance.new("Frame")
+		protectUiInst(grp, UI_ATTR.POPUPROOT)
+		grp.BackgroundTransparency = 1
+		grp.Active = true
+		grp.AnchorPoint = Vector2.new(0.5, 0.5)
+		grp.Position = UDim2.fromScale(0.5, 0.5)
+		grp.Size = UDim2.fromOffset(w, 0)
+		grp.ZIndex = POPUP_FRAME_Z
+		grp.Parent = gui
+		baseZ = POPUP_FRAME_Z
+	end
+	local timCtl
+	local card, hdr, ttl, act, st, sc, cntObj, ftr, trk, fil = mkCard(w, baseZ, kind, function(paused)
+		if timCtl then
+			if paused then
+				timCtl.pause()
+			else
+				timCtl.resume()
+			end
+		end
+	end)
+	if kind == "Popup" then
+		local function syncGrp()
+			if grp and card then
+				grp.Size = UDim2.fromOffset(card.AbsoluteSize.X, card.AbsoluteSize.Y)
+			end
+		end
+		addConnection(card, card:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncGrp))
+		addConnection(grp, grp.DescendantAdded:Connect(function(d)
+			if d:IsA("Frame") then
+				d.ZIndex = POPUP_FRAME_Z
+			end
+		end))
+		syncGrp()
+	end
+	ACT[kind][card] = true
+	syncOverlayActive()
+	ttl.Text = p.Title or kind
+	local s = ctx(card)
+	s.kind = kind
+	s.cnt = cntObj
+	s.ftr = ftr
+	s.trk = trk
+	s.fil = fil
+	s.dock = dock
+	s.fromDir = from
+	s.multi = false
+	s.sel = {}
+	s.btns = nil
+	s.ok = nil
+	s.stackKey = stackKey
+	if stackKey then
+		STACKED_NOTIFS[stackKey] = card
+	end
+	if s.setStackCount then
+		s.setStackCount(1)
+	end
+	s.closing = false
+	s.finish = function()
+		if ctxMap[card] ~= s then return end
+		cleanup(card)
+		for _, t in ACT do t[card] = nil end
+		syncOverlayActive()
+		pcall(function() card:Destroy() end)
+		destroyPopupRoot()
+	end
+	s.close = function()
+		if s.closing then
+			return
+		end
+		s.closing = true
+		if s.stackKey and STACKED_NOTIFS[s.stackKey] == card then
+			STACKED_NOTIFS[s.stackKey] = nil
+		end
+		if s.closeMenus then
+			s.closeMenus()
+		end
+		disappear(card, sc, st)
+	end
+	addConnection(card, card.Destroying:Connect(function()
+		s.closing = true
+		if s.closeMenus then s.closeMenus() end
+		if s.stackKey and STACKED_NOTIFS[s.stackKey] == card then
+			STACKED_NOTIFS[s.stackKey] = nil
+		end
+		for _, t in ACT do
+			t[card] = nil
+		end
+		syncOverlayActive()
+		cleanup(card)
+		destroyPopupRoot()
+	end))
+	function s.setDock(newDock, persist)
+		newDock = mapDock(newDock)
+		if s.closing or s.dock == newDock then return end
+		if s.stackKey and STACKED_NOTIFS[s.stackKey] == card then
+			STACKED_NOTIFS[s.stackKey] = nil
+		end
+		s.stackKey = nil
+		s.dock = newDock
+		if persist then
+			CURD[kind] = newDock
+			saveDocks()
+		end
+		local pos = s.shell.AbsolutePosition
+		s.rebase = true
+		card.Parent = getStack(newDock)
+		s.lastPos = card.AbsolutePosition
+		if s.opened then
+			NotifFuns.moveCard(card, Vector2.new(0, 0), 18, (pos - s.lastPos) / csc(card))
+		end
+		s.rebase = false
+		s.wantSize = nil
+		NotifFuns.resizeCard(card)
+	end
+	if p.Description and p.Description ~= "" then
+		local d = Instance.new("TextLabel")
+		d.BackgroundTransparency = 1
+		d.TextColor3 = TH.Txt
+		d.TextXAlignment = Enum.TextXAlignment.Left
+		d.TextYAlignment = Enum.TextYAlignment.Top
+		d.TextWrapped = true
+		d.RichText = true
+		d.Font = CURF[kind]
+		d.TextScaled = false
+		d.TextSize = isMobile and 15 or 14
+		d.TextTransparency = 0
+		d.AutomaticSize = Enum.AutomaticSize.Y
+		d.Size = UDim2.new(1, 0, 0, 0)
+		d.ZIndex = card.ZIndex + 121
+		d.Text = p.Description
+		d.Parent = cntObj
+	end
+	if p.InputField then
+		local inp = Instance.new("TextBox")
+		inp.Size = UDim2.new(1, 0, 0, isMobile and 48 or 44)
+		inp.ClearTextOnFocus = false
+		inp.TextXAlignment = Enum.TextXAlignment.Left
+		inp.TextYAlignment = Enum.TextYAlignment.Center
+		inp.Font = CURF[kind]
+		inp.TextSize = isMobile and 15 or 14
+		inp.TextColor3 = TH.Txt
+		inp.RichText = true
+		inp.BackgroundColor3 = TH.Btn
+		inp.BackgroundTransparency = 0.3
+		inp.Text = ""
+		inp.PlaceholderText = p.Placeholder or "Type here…"
+		inp.PlaceholderColor3 = TH.Mut
+		inp.ZIndex = card.ZIndex + 121
+		inp.Parent = cntObj
+		local c = Instance.new("UICorner", inp)
+		c.CornerRadius = UDim.new(0, 6)
+		local st2 = Instance.new("UIStroke", inp)
+		st2.Color = TH.Border
+		st2.Transparency = 0.92
+		st2.Thickness = 1
+		local p2 = Instance.new("UIPadding", inp)
+		p2.PaddingLeft = UDim.new(0, isMobile and 16 or 14)
+		p2.PaddingRight = UDim.new(0, isMobile and 16 or 14)
+		s.inp = inp
+		addConnection(inp, inp.Focused:Connect(function()
+			tw:Create(inp, TweenInfo.new(0.12), {
+				BackgroundTransparency = 0
+			}):Play()
+			tw:Create(inp, TweenInfo.new(0.12), {
+				BackgroundColor3 = TH.BtnHover
+			}):Play()
+			tw:Create(st2, TweenInfo.new(0.12), {
+				Transparency = 0.85
+			}):Play()
+		end))
+		addConnection(inp, inp.FocusLost:Connect(function()
+			tw:Create(inp, TweenInfo.new(0.12), {
+				BackgroundTransparency = 1
+			}):Play()
+			tw:Create(inp, TweenInfo.new(0.12), {
+				BackgroundColor3 = TH.Btn
+			}):Play()
+			tw:Create(st2, TweenInfo.new(0.12), {
+				Transparency = 0.92
+			}):Play()
+		end))
+	end
+	local btns = p.Buttons or {}
+	if #btns > 0 then
+		mkBtnArea(cntObj, btns, card, card.ZIndex + 122, math.floor(gui.AbsoluteSize.Y * 0.52), CURF[kind])
+	end
+	if #btns > 2 then
+		local mBtn, setMSel = mkIcn(act, "M", act.ZIndex + 3, CURF[kind])
+		local okBtn = mkIcn(act, "✓", act.ZIndex + 3, CURF[kind])
+		mBtn.LayoutOrder = 10
+		okBtn.LayoutOrder = 20
+		okBtn.Visible = false
+		local function showOK(on)
+			on = (s.multi and on) and true or false
+			okBtn.Visible = on
+			task.spawn(function()
+				rs.Heartbeat:Wait()
+				rs.Heartbeat:Wait()
+				if s and s.refTitle then
+					s.refTitle()
+				end
+			end)
+		end
+		setMSel(false)
+		addConnection(mBtn, mBtn.MouseButton1Click:Connect(function()
+			if s.closing then
+				return
+			end
+			s.multi = not s.multi
+			setMSel(s.multi)
+			if not s.multi then
+				s.sel = {}
+				if s.btns then
+					for _, rec in s.btns do
+						if rec and rec.set then
+							rec.set(false)
+						end
+					end
+				end
+				showOK(false)
+			else
+				showOK(#(s.sel or {}) > 0)
+			end
+		end))
+		addConnection(okBtn, okBtn.MouseButton1Click:Connect(function()
+			if s.closing then
+				return
+			end
+			for _, info in s.sel or {} do
+				if info.Callback then
+					info.Callback(s.inp and s.inp.Text or "")
+				end
+			end
+			if s.close then
+				s.close()
+			end
+		end))
+		s.ok = function(vis)
+			showOK((s.multi and vis) and true or false)
+		end
+	end
+	local dur = typeof(p.Duration) == "number" and p.Duration > 0 and p.Duration or nil
+	local showProg = kind == "Notify" and #btns == 0 and dur ~= nil
+	local shouldTimer = kind == "Notify" and dur ~= nil
+	local parent = kind == "Popup" and grp or getStack(dock)
+	trk.Visible = showProg
+	openIn(card, parent, ftr, showProg and trk or nil, st, sc, from, cntObj)
+	if kind == "Popup" then
+		enforcePopupFrameZ(grp)
+	end
+	if shouldTimer then
+		timCtl = attachTimer(card, showProg and fil or nil, dur)
+	end
+	s.timCtl = timCtl
+	if kind == "Popup" then
+		ov.BackgroundTransparency = 1
+		trackPopupCenter(grp, card)
+		grp.Active = true
+		grp.Draggable = true
+		card.Draggable = false
+		local function markManual()
+			ctx(grp).popupManual = true
+		end
+		if grp.DragBegin then
+			addConnection(card, grp.DragBegin:Connect(markManual))
+		end
+	end
+	return card
+end
+build = NotifFuns.build
+
+function NotifFuns.Notify(p)
+	return build("Notify", p)
+end
+Notify = NotifFuns.Notify
+
+function NotifFuns.Window(p)
+	return build("Window", p or {})
+end
+Window = NotifFuns.Window
+
+function NotifFuns.Popup(p)
+	p = p or {}
+	p.Dock = p.Dock or CURD.Popup or "top"
+	return build("Popup", p)
+end
+Popup = NotifFuns.Popup
+
+local api = {
+	Notify = function(p)
+		p = typeof(p) == "table" and p or {}
+		if p.Content and not p.Description then
+			p.Description = p.Content
+		end
+		return Notify(p)
+	end,
+	Window = function(p)
+		return Window(p)
+	end,
+	Popup = function(p)
+		return Popup(p)
+	end,
+	SetFont = function(kind, name)
+		for _, pair in FONTS do
+			if pair[1] == name then
+				setFontKind(kind, pair[2])
+				break
+			end
+		end
+	end,
+	UI = function()
+		local uiFn = rawget(_naNotif_env, "EnhancedNotifsUI")
+		if type(uiFn) == "function" then
+			local ok, uiRef = pcall(uiFn)
+			if ok then
+				return uiRef
+			end
+		end
+		if typeof(_naNotif_gui) == "Instance" and _naNotif_gui.Parent then
+			return _naNotif_gui
+		end
+		if typeof(gui) == "Instance" and gui.Parent then
+			return gui
+		end
+		return nil
+	end,
+	NotifFuns = NotifFuns
+}
+
+rawset(api, "__na_owner_token", _naNotif_owner_token)
+rawset(api, "__na_ui_rev", UI_REV)
+_naNotif_env.EnhancedNotifs = api
+
+return api
