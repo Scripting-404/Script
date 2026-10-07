@@ -1,0 +1,1060 @@
+local Players      = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService   = game:GetService("RunService")
+local Debris       = game:GetService("Debris")
+local StarterGui   = game:GetService("StarterGui")
+
+local player    = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid  = character:WaitForChild("Humanoid")
+local animator  = humanoid:WaitForChild("Animator")
+
+--==================================================
+-- TUNABLES
+--==================================================
+
+local PUNCH_RANGE       = 8
+local PUNCH_MIN_DOT     = 0.15
+local PUNCH_DAMAGE_MIN  = 15
+local PUNCH_DAMAGE_MAX  = 40
+local GODMODE_REFRESH   = 2
+local SHOTGUN_TOOL_NAME = "Shotgun"
+
+--==================================================
+-- TRULY RANDOM GENERATOR
+--==================================================
+
+local rng = Random.new()
+
+local function rollDamage()
+    return rng:NextInteger(PUNCH_DAMAGE_MIN, PUNCH_DAMAGE_MAX)
+end
+
+--==================================================
+-- DAMAGE MODE (set by selector)
+--==================================================
+
+local damageMode = nil
+
+--==================================================
+-- SOUNDS
+--==================================================
+
+local airPunchSoundId = "rbxassetid://5835032207"
+
+local punchSounds = {
+    "rbxassetid://9117969687",
+    "rbxassetid://9117969717",
+    "rbxassetid://8278630896",
+}
+
+--==================================================
+-- INTRO
+--==================================================
+
+local introAnimation1 = Instance.new("Animation")
+introAnimation1.AnimationId = "rbxassetid://85723345"
+
+local introTrack1
+
+--==================================================
+-- PUNCH ANIMATIONS
+--==================================================
+
+local punchAnimations = {
+    { id = "204062532", soundId = punchSounds[1], speed = 1.5 },
+    { id = "188854226", soundId = punchSounds[2], speed = 1.5 },
+    { id = "188854557", soundId = punchSounds[3], speed = 1.5 },
+    { id = "126752874", speed = 2.8 }
+}
+
+local punchTracks = {}
+
+--==================================================
+-- STATE
+--==================================================
+
+local cooldown      = false
+local punchIndex    = 1
+local isPunching    = false
+local isDefending   = false
+local shotgunWarned = false
+
+--==================================================
+-- IDLE / WALK ANIMATIONS
+--==================================================
+
+local idleAnimation1 = Instance.new("Animation")
+idleAnimation1.AnimationId = "rbxassetid://107456513"
+
+local idleAnimation2 = Instance.new("Animation")
+idleAnimation2.AnimationId = "rbxassetid://544567096"
+
+local idleAnimation3 = Instance.new("Animation")
+idleAnimation3.AnimationId = "rbxassetid://21633130"
+
+local walkAnimation1 = Instance.new("Animation")
+walkAnimation1.AnimationId = "rbxassetid://107456513"
+
+local walkAnimation2 = Instance.new("Animation")
+walkAnimation2.AnimationId = "rbxassetid://54456096"
+
+local idleTrack1, idleTrack2, idleTrack3
+local walkTrack1, walkTrack2
+
+--==================================================
+-- PUNCH TOOL
+--==================================================
+
+local punchTool = Instance.new("Tool")
+punchTool.Name = "Punch"
+punchTool.RequiresHandle = false
+punchTool.CanBeDropped = false
+
+--==================================================
+-- DEFENSE TOOL
+--==================================================
+
+local defenseAnimation = Instance.new("Animation")
+defenseAnimation.AnimationId = "rbxassetid://188790303"
+
+local defenseTool = Instance.new("Tool")
+defenseTool.Name = "Defense"
+defenseTool.RequiresHandle = false
+defenseTool.CanBeDropped = false
+
+local defenseTrack
+
+--==================================================
+-- DEFENSE EFFECTS
+--==================================================
+
+local energyBall
+local energyBallConnection
+local espHighlight
+local godModeThread
+
+--==================================================
+-- MOVEMENT STATE
+--==================================================
+
+local currentMovementState = nil
+local runningConnection
+
+--==================================================
+-- NOTIFICATION (native toast)
+--==================================================
+
+local function notify(title, text, duration)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title    = title,
+            Text     = text,
+            Duration = duration or 3
+        })
+    end)
+end
+
+--==================================================
+-- INITIALIZE ANIMATIONS
+--==================================================
+
+local function initializeCustomAnimations()
+
+    introTrack1 = animator:LoadAnimation(introAnimation1)
+    introTrack1.Priority = Enum.AnimationPriority.Action
+    introTrack1.Looped = false
+
+    idleTrack1 = animator:LoadAnimation(idleAnimation1)
+    idleTrack2 = animator:LoadAnimation(idleAnimation2)
+    idleTrack3 = animator:LoadAnimation(idleAnimation3)
+
+    walkTrack1 = animator:LoadAnimation(walkAnimation1)
+    walkTrack2 = animator:LoadAnimation(walkAnimation2)
+
+    defenseTrack = animator:LoadAnimation(defenseAnimation)
+    defenseTrack.Priority = Enum.AnimationPriority.Action
+    defenseTrack.Looped = true
+
+    idleTrack1.Priority = Enum.AnimationPriority.Idle
+    idleTrack2.Priority = Enum.AnimationPriority.Idle
+    idleTrack3.Priority = Enum.AnimationPriority.Idle
+
+    walkTrack1.Priority = Enum.AnimationPriority.Movement
+    walkTrack2.Priority = Enum.AnimationPriority.Movement
+
+end
+
+--==================================================
+-- PRELOAD PUNCH
+--==================================================
+
+local function preloadPunchAnimations()
+
+    punchTracks = {}
+
+    for i, punchData in ipairs(punchAnimations) do
+
+        local animation = Instance.new("Animation")
+        animation.AnimationId = "rbxassetid://" .. punchData.id
+
+        local track = animator:LoadAnimation(animation)
+        track.Priority = Enum.AnimationPriority.Action
+        track.Looped = false
+
+        punchTracks[i] = track
+    end
+
+end
+
+--==================================================
+-- STOP CUSTOM ANIMATIONS
+--==================================================
+
+local function stopCustomAnimations(fadeTime)
+
+    fadeTime = fadeTime or 0.2
+
+    if idleTrack1 then idleTrack1:Stop(fadeTime) end
+    if idleTrack2 then idleTrack2:Stop(fadeTime) end
+    if idleTrack3 then idleTrack3:Stop(fadeTime) end
+    if walkTrack1 then walkTrack1:Stop(fadeTime) end
+    if walkTrack2 then walkTrack2:Stop(fadeTime) end
+
+end
+
+--==================================================
+-- IDLE / WALK
+--==================================================
+
+local function playIdleAnimations()
+
+    if isPunching or isDefending or cooldown then return end
+    if currentMovementState == "Idle" then return end
+
+    currentMovementState = "Idle"
+    stopCustomAnimations(0.15)
+
+    idleTrack1:Play(0.15)
+    idleTrack1.TimePosition = 3
+    idleTrack1:AdjustSpeed(0)
+
+    idleTrack2:Play(0.15)
+    idleTrack2.TimePosition = 0.8
+    idleTrack2:AdjustSpeed(0)
+
+    idleTrack3:Play(0.15)
+
+end
+
+local function playWalkAnimations()
+
+    if isPunching or isDefending or cooldown then return end
+    if currentMovementState == "Walk" then return end
+
+    currentMovementState = "Walk"
+    stopCustomAnimations(0.15)
+
+    walkTrack1:Play(0.15)
+    walkTrack1.TimePosition = 3
+    walkTrack1:AdjustSpeed(0)
+
+    walkTrack2:Play(0.15)
+    walkTrack2.TimePosition = 0.8
+    walkTrack2:AdjustSpeed(0)
+
+end
+
+--==================================================
+-- MOVEMENT CONTROLLER
+--==================================================
+
+local function setupMovementController()
+
+    if runningConnection then
+        runningConnection:Disconnect()
+        runningConnection = nil
+    end
+
+    currentMovementState = nil
+
+    runningConnection = humanoid.Running:Connect(function(speed)
+
+        if isPunching or isDefending or cooldown then return end
+
+        if speed > 0.1 then
+            playWalkAnimations()
+        else
+            playIdleAnimations()
+        end
+    end)
+
+    task.defer(function()
+
+        if not humanoid or humanoid.Health <= 0 then return end
+
+        if humanoid.MoveDirection.Magnitude > 0.05 then
+            playWalkAnimations()
+        else
+            playIdleAnimations()
+        end
+
+    end)
+
+end
+
+--==================================================
+-- SOUND
+--==================================================
+
+local function playSound(soundId)
+
+    if not character then return end
+
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local sound = Instance.new("Sound")
+    sound.SoundId = soundId
+    sound.Volume  = 1
+    sound.Parent  = root
+
+    sound:Play()
+    Debris:AddItem(sound, 3)
+
+end
+
+--==================================================
+-- SHOTGUN CHECK
+--==================================================
+
+local function findShotgunTool()
+
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    if backpack then
+        local s = backpack:FindFirstChild(SHOTGUN_TOOL_NAME)
+        if s and s:IsA("Tool") then return s end
+    end
+
+    if character then
+        local s = character:FindFirstChild(SHOTGUN_TOOL_NAME)
+        if s and s:IsA("Tool") then return s end
+    end
+
+    return nil
+
+end
+
+local function requireShotgun()
+    local shotgun = findShotgunTool()
+
+    if not shotgun then
+        if not shotgunWarned then
+            shotgunWarned = true
+            notify(
+                "Shotgun Required",
+                "You must equip a \"Shotgun\" for this action to work!",
+                4
+            )
+            task.delay(4, function()
+                shotgunWarned = false
+            end)
+        end
+        return nil
+    end
+
+    local receiver = shotgun:FindFirstChild("Receiver")
+    if not receiver then
+        notify(
+            "Shotgun Error",
+            "Your Shotgun has no Receiver — cannot deal damage.",
+            4
+        )
+        return nil
+    end
+
+    return receiver
+
+end
+
+--==================================================
+-- TARGET VALIDATION (Player + NPC anywhere in map)
+--==================================================
+
+local function isAliveHumanoid(hum)
+    if not hum then return false end
+    if hum.Health ~= hum.Health then return false end -- NaN guard
+    if hum.Health <= 0 then return false end
+    return true
+end
+
+local function getModelPosition(model)
+    if not model then return nil end
+
+    local root = model:FindFirstChild("HumanoidRootPart")
+    if root then return root.Position end
+
+    local primary = model.PrimaryPart
+    if primary then return primary.Position end
+
+    for _, name in ipairs({"UpperTorso", "Torso", "Head", "Chest", "RootPart"}) do
+        local p = model:FindFirstChild(name)
+        if p and p:IsA("BasePart") then
+            return p.Position
+        end
+    end
+
+    return nil
+end
+
+local function collectAllTargets()
+
+    local targets = {}
+
+    for _, desc in ipairs(workspace:GetDescendants()) do
+        if desc:IsA("Humanoid") then
+            local model = desc.Parent
+            if model and model ~= character
+                and model:IsA("Model")
+                and isAliveHumanoid(desc) then
+
+                targets[#targets + 1] = model
+            end
+        end
+    end
+
+    return targets
+
+end
+
+--==================================================
+-- PUNCH TARGET FINDER
+--==================================================
+
+local function findPunchTarget()
+
+    if not character then return nil end
+
+    local myRoot = character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return nil end
+
+    local origin  = myRoot.Position
+    local lookVec = myRoot.CFrame.LookVector
+
+    local best     = nil
+    local bestDist = PUNCH_RANGE
+
+    for _, model in ipairs(collectAllTargets()) do
+
+        local pos = getModelPosition(model)
+        if pos then
+
+            local offset = pos - origin
+            local dist   = offset.Magnitude
+
+            if dist > 0.01 and dist <= PUNCH_RANGE then
+
+                local dot = lookVec:Dot(offset.Unit)
+
+                if dot >= PUNCH_MIN_DOT and dist < bestDist then
+                    bestDist = dist
+                    best     = model
+                end
+
+            end
+        end
+
+    end
+
+    return best
+
+end
+
+--==================================================
+-- PUNCH DAMAGE
+--==================================================
+
+local function punchDamageTarget(model, receiver)
+
+    if not model then return false end
+    if model == character then return false end
+
+    local targetHum = model:FindFirstChildOfClass("Humanoid")
+    if not isAliveHumanoid(targetHum) then return false end
+
+    local dmg
+    if damageMode == "Instant" then
+        dmg = math.huge
+    else
+        dmg = rollDamage()
+    end
+
+    pcall(function()
+        receiver:FireServer("Damage", targetHum, dmg)
+    end)
+
+    return true
+
+end
+
+--==================================================
+-- PUNCH
+--==================================================
+
+local function playPunchAnimation()
+
+    if cooldown or isDefending then return end
+    if not humanoid or humanoid.Health <= 0 then return end
+
+    local receiver = requireShotgun()
+    if not receiver then return end
+
+    local punchTrack = punchTracks[punchIndex]
+    local punchData  = punchAnimations[punchIndex]
+
+    if not punchTrack or not punchData then return end
+
+    cooldown   = true
+    isPunching = true
+
+    stopCustomAnimations(0.1)
+
+    local state = humanoid:GetState()
+    local isJumping =
+        state == Enum.HumanoidStateType.Freefall
+        or state == Enum.HumanoidStateType.Jumping
+
+    if isJumping then
+        punchTrack = punchTracks[3]
+        punchData  = punchAnimations[3]
+    end
+
+    punchTrack.Priority = Enum.AnimationPriority.Action
+    punchTrack:Play(0.05, 1, punchData.speed)
+    punchTrack.TimePosition = 0
+
+    local target = findPunchTarget()
+
+    if target then
+
+        if punchData.soundId then
+            playSound(punchData.soundId)
+        else
+            playSound(punchSounds[rng:NextInteger(1, #punchSounds)])
+        end
+
+        punchDamageTarget(target, receiver)
+
+    else
+        playSound(airPunchSoundId)
+    end
+
+    local animationLength = punchTrack.Length
+    if animationLength <= 0 then
+        animationLength = 0.5
+    else
+        animationLength = animationLength / punchData.speed
+    end
+
+    task.delay(animationLength, function()
+
+        if punchTrack and punchTrack.IsPlaying then
+            punchTrack:Stop(0.1)
+        end
+
+        if punchIndex == 4 then
+            punchIndex = 1
+        else
+            punchIndex += 1
+        end
+
+        isPunching = false
+        cooldown   = false
+
+        if not isDefending then
+            currentMovementState = nil
+            if humanoid.MoveDirection.Magnitude > 0.05 then
+                playWalkAnimations()
+            else
+                playIdleAnimations()
+            end
+        end
+
+    end)
+
+end
+
+--==================================================
+-- ENERGY BALL
+--==================================================
+
+local function createEnergyBall()
+
+    local ball = Instance.new("Part")
+    ball.Shape        = Enum.PartType.Ball
+    ball.Size         = Vector3.new(0.1, 0.1, 0.1)
+    ball.Transparency = 0.6
+    ball.Color        = Color3.new(1, 1, 1)
+    ball.Anchored     = true
+    ball.CanCollide   = false
+    ball.Material     = Enum.Material.SmoothPlastic
+    ball.Parent       = workspace
+
+    local rootPart = character:WaitForChild("HumanoidRootPart")
+    ball.CFrame = rootPart.CFrame
+
+    local firstSound = Instance.new("Sound")
+    firstSound.SoundId = "rbxassetid://365003340"
+    firstSound.Volume  = 1
+    firstSound.Parent  = ball
+    firstSound:Play()
+
+    task.delay(1, function()
+        if not ball or not ball.Parent then return end
+
+        local secondSound = Instance.new("Sound")
+        secondSound.SoundId = "rbxassetid://838152983"
+        secondSound.Volume  = 1
+        secondSound.Looped  = true
+        secondSound.Parent  = ball
+        secondSound:Play()
+    end)
+
+    local growTweenInfo = TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local growTween = TweenService:Create(ball, growTweenInfo, { Size = Vector3.new(10, 10, 10) })
+    growTween:Play()
+
+    local connection
+    connection = RunService.Heartbeat:Connect(function()
+
+        if not isDefending then
+            if connection then connection:Disconnect() end
+            return
+        end
+
+        if character and character:FindFirstChild("HumanoidRootPart") then
+            ball.CFrame = character.HumanoidRootPart.CFrame
+        else
+            connection:Disconnect()
+        end
+
+    end)
+
+    return ball, connection
+
+end
+
+--==================================================
+-- ESP
+--==================================================
+
+local function createESP()
+
+    local esp = Instance.new("Highlight")
+    esp.Adornee          = character
+    esp.OutlineColor     = Color3.new(1, 1, 1)
+    esp.FillColor        = Color3.new(1, 1, 1)
+    esp.FillTransparency = 0.8
+    esp.Parent           = character
+
+    return esp
+
+end
+
+--==================================================
+-- GOD MODE
+--==================================================
+
+local function applyGodMode(receiver)
+
+    local hum = character and character:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    pcall(function()
+        receiver:FireServer("Damage", hum, 0/0)
+    end)
+
+end
+
+--==================================================
+-- DEFENSE (God Mode Only — every 2s refresh)
+--==================================================
+
+local function playDefenseAnimation()
+
+    if isPunching or cooldown then return end
+
+    local receiver = requireShotgun()
+    if not receiver then return end
+
+    isDefending = true
+
+    applyGodMode(receiver)
+
+    if godModeThread then
+        task.cancel(godModeThread)
+        godModeThread = nil
+    end
+
+    godModeThread = task.spawn(function()
+        while isDefending do
+            task.wait(GODMODE_REFRESH)
+            if not isDefending then break end
+
+            local r = requireShotgun()
+            if r then
+                applyGodMode(r)
+            end
+        end
+    end)
+
+    currentMovementState = nil
+    stopCustomAnimations(0.3)
+
+    defenseTrack.Looped = true
+    defenseTrack.Priority = Enum.AnimationPriority.Action
+    defenseTrack:Play(0.2, 1, 1)
+
+    energyBall, energyBallConnection = createEnergyBall()
+
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.Material = Enum.Material.Neon
+            part.Color    = Color3.new(1, 1, 1)
+        end
+    end
+
+    espHighlight = createESP()
+
+    task.spawn(function()
+        while isDefending do
+            if humanoid.Health <= 0 and humanoid.Health == humanoid.Health then
+                break
+            end
+
+            if humanoid.MoveDirection.Magnitude == 0 then
+                if not idleTrack3.IsPlaying then
+                    idleTrack3:Play(0.15)
+                end
+            else
+                if idleTrack3.IsPlaying then
+                    idleTrack3:Stop(0.15)
+                end
+            end
+
+            task.wait(0.1)
+        end
+    end)
+
+end
+
+--==================================================
+-- STOP DEFENSE
+--==================================================
+
+local function stopDefenseAnimation()
+
+    if not isDefending then return end
+
+    isDefending = false
+
+    if godModeThread then
+        task.cancel(godModeThread)
+        godModeThread = nil
+    end
+
+    if defenseTrack then
+        defenseTrack:Stop(0.3)
+    end
+
+    if idleTrack3 then
+        idleTrack3:Stop(0.2)
+    end
+
+    if energyBall then
+
+        local ballToRemove = energyBall
+        local shrinkTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        local shrinkTween = TweenService:Create(ballToRemove, shrinkTweenInfo, {
+            Size = Vector3.new(0.1, 0.1, 0.1)
+        })
+        shrinkTween:Play()
+
+        shrinkTween.Completed:Connect(function()
+            if ballToRemove then
+                ballToRemove:Destroy()
+            end
+        end)
+
+        energyBall = nil
+    end
+
+    if energyBallConnection then
+        energyBallConnection:Disconnect()
+        energyBallConnection = nil
+    end
+
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.Material = Enum.Material.SmoothPlastic
+        end
+    end
+
+    if espHighlight then
+        espHighlight:Destroy()
+        espHighlight = nil
+    end
+
+    currentMovementState = nil
+
+    if humanoid.MoveDirection.Magnitude > 0.05 then
+        playWalkAnimations()
+    else
+        playIdleAnimations()
+    end
+
+end
+
+--==================================================
+-- CHARACTER RESPAWN
+--==================================================
+
+local function onCharacterAdded(char)
+
+    if runningConnection then
+        runningConnection:Disconnect()
+        runningConnection = nil
+    end
+
+    if godModeThread then
+        task.cancel(godModeThread)
+        godModeThread = nil
+    end
+
+    character = char
+    humanoid  = character:WaitForChild("Humanoid")
+    animator  = humanoid:WaitForChild("Animator")
+
+    cooldown      = false
+    punchIndex    = 1
+    isPunching    = false
+    isDefending   = false
+    shotgunWarned = false
+
+    currentMovementState = nil
+
+    setupCharacterTools()
+
+end
+
+--==================================================
+-- TOOL SETUP
+--==================================================
+
+function setupCharacterTools()
+
+    initializeCustomAnimations()
+    preloadPunchAnimations()
+
+    local backpack = player:WaitForChild("Backpack")
+
+    local oldPunch = backpack:FindFirstChild("Punch")
+    if oldPunch and oldPunch ~= punchTool then
+        oldPunch:Destroy()
+    end
+
+    local oldDefense = backpack:FindFirstChild("Defense")
+    if oldDefense and oldDefense ~= defenseTool then
+        oldDefense:Destroy()
+    end
+
+    local oldKill = backpack:FindFirstChild("Kill")
+    if oldKill then
+        oldKill:Destroy()
+    end
+
+    if punchTool.Parent ~= backpack and punchTool.Parent ~= character then
+        punchTool.Parent = backpack
+    end
+
+    if defenseTool.Parent ~= backpack and defenseTool.Parent ~= character then
+        defenseTool.Parent = backpack
+    end
+
+    setupMovementController()
+
+end
+
+--==================================================
+-- CHARACTER EVENT
+--==================================================
+
+player.CharacterAdded:Connect(function(char)
+
+    task.wait(0.2)
+    onCharacterAdded(char)
+    task.wait(0.3)
+
+    if introTrack1 then
+        introTrack1:Play(0.15, 1, 1)
+
+        task.delay(3.1, function()
+            if introTrack1 and introTrack1.IsPlaying then
+                introTrack1:Stop(0.5)
+            end
+        end)
+    end
+
+end)
+
+--==================================================
+-- MAIN START (called from selector)
+--==================================================
+
+local started = false
+
+local function startMain(chosenMode)
+
+    if started then return end
+    started = true
+
+    damageMode = chosenMode
+
+    if chosenMode == "Instant" then
+        notify("Damage Mode", "Instant — 1-hit kill", 4)
+    else
+        notify(
+            "Damage Mode",
+            string.format("Random — %d to %d damage per hit",
+                PUNCH_DAMAGE_MIN, PUNCH_DAMAGE_MAX),
+            4
+        )
+    end
+
+    -- Build tools
+    initializeCustomAnimations()
+    preloadPunchAnimations()
+
+    punchTool.Parent   = player:WaitForChild("Backpack")
+    defenseTool.Parent = player:WaitForChild("Backpack")
+
+    -- Clean leftover Kill tool
+    do
+        local bp = player:WaitForChild("Backpack")
+        local oldKill = bp:FindFirstChild("Kill")
+        if oldKill then oldKill:Destroy() end
+    end
+
+    -- Connect tool events (do this AFTER mode is chosen)
+    punchTool.Activated:Connect(playPunchAnimation)
+    defenseTool.Equipped:Connect(playDefenseAnimation)
+    defenseTool.Unequipped:Connect(stopDefenseAnimation)
+
+    -- Intro
+    introTrack1:Play(0.15, 1, 1)
+
+    task.delay(3.1, function()
+        if introTrack1 and introTrack1.IsPlaying then
+            introTrack1:Stop(0.5)
+        end
+        setupMovementController()
+    end)
+
+end
+
+--==================================================
+-- DAMAGE MODE SELECTOR UI
+--==================================================
+
+local function showDamageModeSelector()
+
+    local playerGui = player:WaitForChild("PlayerGui")
+
+    -- Clean previous instance if any
+    local prev = playerGui:FindFirstChild("DamageModeSelector")
+    if prev then prev:Destroy() end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "DamageModeSelector"
+    gui.ResetOnSpawn = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    gui.Parent = playerGui
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.fromOffset(280, 130)
+    frame.Position = UDim2.new(0.5, -140, 0.5, -65)
+    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    frame.BorderSizePixel = 0
+    frame.Parent = gui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = frame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(80, 80, 90)
+    stroke.Thickness = 1
+    stroke.Parent = frame
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 40)
+    title.BackgroundTransparency = 1
+    title.Text = "Punch Damage Mode"
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.TextSize = 18
+    title.Font = Enum.Font.GothamBold
+    title.Parent = frame
+
+    local function createButton(text, position)
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.fromOffset(120, 45)
+        button.Position = position
+        button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        button.Text = text
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.TextSize = 15
+        button.Font = Enum.Font.GothamBold
+        button.AutoButtonColor = true
+        button.Parent = frame
+
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 8)
+        c.Parent = button
+
+        return button
+    end
+
+    local instantButton = createButton("Instant", UDim2.new(0, 10, 0, 65))
+    local randomButton  = createButton("Random",  UDim2.new(0, 150, 0, 65))
+
+    -- Reliable click binding (mouse + touch + gamepad)
+    local function bindClick(btn, callback)
+        local fired = false
+        local function handler()
+            if fired then return end
+            fired = true
+            callback()
+        end
+        btn.MouseButton1Click:Connect(handler)
+        btn.Activated:Connect(handler)
+    end
+
+    bindClick(instantButton, function()
+        gui:Destroy()
+        startMain("Instant")
+    end)
+
+    bindClick(randomButton, function()
+        gui:Destroy()
+        startMain("Random")
+    end)
+
+end
+
+--==================================================
+-- ENTRY POINT
+--==================================================
+
+-- Show the selector. Main script will only run
+-- AFTER the user picks a mode.
+showDamageModeSelector()
