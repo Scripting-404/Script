@@ -13996,3 +13996,17 @@ do
 		task.spawn(restoreSavedTabs, false)
 	end
 end
+local SoundService = game:GetService("SoundService")
+
+local sound = Instance.new("Sound")
+sound.SoundId = "rbxassetid://138118203571469"
+sound.Volume = 1
+sound.Looped = false
+sound.Parent = SoundService
+
+sound:Play()
+
+sound.Ended:Connect(function()
+    sound:Destroy()
+    end)
+    
