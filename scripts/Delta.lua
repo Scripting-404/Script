@@ -367,8 +367,7 @@ do
 	repeat
 		tries += 1
 		local s, r = runUrl(
-			"https://gitlab.com/ltseverydayyou/Nameless-Admin/-/raw/main/NamelessAdminNotifications.lua",
-			"@NamelessAdminNotifications.lua"
+			""
 		)
 		if s and type(r) == "table" and type(r.Notify) == "function" then
 			n = r
