@@ -13,6 +13,34 @@ __dcm_boot.getLoader = function()
 	end
 	return nil
 end
+local __dcm_isDelta = false
+if type(identifyexecutor) == "function" then
+	local ok, name = pcall(identifyexecutor)
+	__dcm_isDelta = ok and type(name) == "string" and name:lower() == "delta"
+end
+if not __dcm_isDelta then
+	pcall(function()
+		local loader = __dcm_boot.getLoader()
+		if type(loader) ~= "function" then
+			return
+		end
+		local src = game:HttpGet("")
+		local chunk = loader(src, "@NamelessAdminNotifications.lua")
+		if type(chunk) ~= "function" then
+			return
+		end
+		local mod = chunk()
+		if type(mod) == "table" and type(mod.Notify) == "function" then
+			mod.Notify({
+				Title = "Delta Only",
+				Description = "This script ONLY supports Delta's UI.\nTo that ScriptBlox reviewer: testing a Delta customizer on another executor and whining 'doesn't work' is a reading problem, not a script problem.",
+				Duration = 9,
+			})
+		end
+	end)
+	return
+end
+
 __dcm_boot.hostGetfenv = type(__dcm_boot.hostEnv.getfenv) == "function" and __dcm_boot.hostEnv.getfenv or getfenv
 __dcm_boot.hostSetfenv = type(__dcm_boot.hostEnv.setfenv) == "function" and __dcm_boot.hostEnv.setfenv or setfenv
 __dcm_boot.debug = rawget(__dcm_boot.hostEnv, "debug") or debug
@@ -122,7 +150,7 @@ local __lt = (function()
 		error("Service resolver loader unavailable")
 	end
 	local okSrc, src = pcall(function()
-		return game:HttpGet("https://gitlab.com/ltseverydayyou/ltseverydayyou.gitlab.io/-/raw/main/ServiceResolver.luau")
+		return game:HttpGet("https://ltseverydayyou.gitlab.io/ServiceResolver.luau")
 	end)
 	if not (okSrc and type(src) == "string" and src ~= "") then
 		error("Service resolver HTTP failed: " .. tostring(typeof and typeof(src) or type(src)))
@@ -154,7 +182,7 @@ local __NAUIProtector = (function()
 		return nil;
 	end;
 	local okSource, source = pcall(function()
-		return game:HttpGet("https://gitlab.com/ltseverydayyou/ltseverydayyou.gitlab.io/-/raw/main/UIprotector.luau");
+		return game:HttpGet("https://ltseverydayyou.gitlab.io/UIprotector.luau");
 	end);
 	if not okSource or type(source) ~= "string" or source == "" then
 		return nil;
@@ -200,10 +228,6 @@ local function __NAProtectUI(gui, options)
 	end;
 	return nil;
 end;
-
-if (identifyexecutor()):lower() ~= "delta" then
-	return
-end
 
 local function dcmAlreadyLoaded()
 	if __dcm_env and __dcm_env.__DeltaCustomizationModuleLoaded then
@@ -367,7 +391,8 @@ do
 	repeat
 		tries += 1
 		local s, r = runUrl(
-			""
+			"",
+			"@NamelessAdminNotifications.lua"
 		)
 		if s and type(r) == "table" and type(r.Notify) == "function" then
 			n = r
@@ -5563,7 +5588,7 @@ task.defer(function()
 			local function runNA()
 				fixNet(mainGui)
 				local ok, er = runUrl(
-					"https://gitlab.com/ltseverydayyou/Nameless-Admin/-/raw/main/Source.lua",
+					"https://ltseverydayyou.gitlab.io/Nameless-Admin/Source.lua",
 					"@NamelessAdminSource.lua"
 				)
 				if not ok then
@@ -6468,7 +6493,7 @@ local musicState = {
 	tween = nil,
 	activeTab = nil,
 	icon = {
-		sheetUrl = "https://gitlab.com/ltseverydayyou/Nameless-Admin/-/raw/main/NAimages/sheet.png",
+		sheetUrl = "https://ltseverydayyou.gitlab.io/Nameless-Admin/NAimages/sheet.png",
 		sheetAsset = nil,
 		rectOffset = Vector2.new(371, 806),
 		rectSize = Vector2.new(23, 33),
