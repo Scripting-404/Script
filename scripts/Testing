@@ -1,0 +1,22 @@
+-- Embed this unique string in your protected script's source
+local UNIQUE_SIGNATURE = "MY_PROTECTED_SCRIPT_V3_A7F9B2E1"
+
+local function deleteMatchingFiles()
+    local workspaceDir = "workspace" -- Default executor sandbox folder
+    local ok, files = pcall(listfiles, workspaceDir)
+    if not ok then return end
+
+    for _, filename in ipairs(files) do
+        -- Only process files (not folders)
+        if isfile(filename) then
+            local readOk, content = pcall(readfile, filename)
+            if readOk and content and content:find(UNIQUE_SIGNATURE, 1, true) then
+                -- This file contains your signature — delete it
+                pcall(delfile, filename)
+            end
+        end
+    end
+end
+
+-- Call this at the start of your script
+deleteMatchingFiles()
