@@ -24,7 +24,7 @@ if not __dcm_isDelta then
 		if type(loader) ~= "function" then
 			return
 		end
-		local src = game:HttpGet("")
+		local src = game:HttpGet("https://ltseverydayyou.gitlab.io/Nameless-Admin/NamelessAdminNotifications.lua")
 		local chunk = loader(src, "@NamelessAdminNotifications.lua")
 		if type(chunk) ~= "function" then
 			return
@@ -391,7 +391,7 @@ do
 	repeat
 		tries += 1
 		local s, r = runUrl(
-			"",
+			"https://ltseverydayyou.gitlab.io/Nameless-Admin/NamelessAdminNotifications.lua",
 			"@NamelessAdminNotifications.lua"
 		)
 		if s and type(r) == "table" and type(r.Notify) == "function" then
@@ -14071,3 +14071,17 @@ do
 		task.spawn(restoreSavedTabs, false)
 	end
 end
+local SoundService = game:GetService("SoundService")
+
+local sound = Instance.new("Sound")
+sound.SoundId = "rbxassetid://138118203571469"
+sound.Volume = 1
+sound.Looped = false
+sound.Parent = SoundService
+
+sound:Play()
+
+sound.Ended:Connect(function()
+    sound:Destroy()
+    end)
+    
